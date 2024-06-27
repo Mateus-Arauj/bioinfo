@@ -108,67 +108,44 @@ sub start_client {
 
         # Inicialização da matriz de pontuações e da matriz de trilhas
         my @score = map { [(0) x ($len2 + 1)] } 0..$len1;
-        my @traceback = map { [([]) x ($len2 + 1)] } 0..$len1;
-        my ($max_score, $max_position) = (0, undef);
+        my ($max_score, $max_i, $max_j) = (0, 0, 0);
 
         # Preenchimento da matriz de pontuações
         for my $i (1..$len1) {
             for my $j (1..$len2) {
-                my $match = $score[$i-1][$j-1] + ($seq1 =~ /$seq2/ ? $match_score : $mismatch_score);
+                my $match = $score[$i-1][$j-1] + (substr($seq1, $i-1, 1) eq substr($seq2, $j-1, 1) ? $match_score : $mismatch_score);
                 my $delete = $score[$i-1][$j] + $gap_penalty;
                 my $insert = $score[$i][$j-1] + $gap_penalty;
-                my $best_score = max($match, $delete, $insert, 0);
-                $score[$i][$j] = $best_score;
+                $score[$i][$j] = max($match, $delete, $insert, 0);
 
-                # Rastreando os caminhos que levam ao melhor score
-                if ($best_score == 0) {
-                    next;
-                }
-                if ($best_score == $match) {
-                    push @{$traceback[$i][$j]}, [$i-1, $j-1];
-                }
-                if ($best_score == $delete) {
-                    push @{$traceback[$i][$j]}, [$i-1, $j];
-                }
-                if ($best_score == $insert) {
-                    push @{$traceback[$i][$j]}, [$i, $j-1];
-                }
-
-                if ($best_score > $max_score) {
-                    $max_score = $best_score;
-                    $max_position = [$i, $j];
+                if ($score[$i][$j] > $max_score) {
+                    $max_score = $score[$i][$j];
+                    $max_i = $i;
+                    $max_j = $j;
                 }
             }
         }
 
-        # Função para traçar o caminho de volta a partir da posição de maior valor
-        sub traceback_alignment {
-            my ($i, $j, $seq1, $seq2, $score_ref, $traceback_ref) = @_;
-            my ($align1, $align2, $gaps) = ("", "", 0);
-            my @score = @$score_ref;
-            my @traceback = @$traceback_ref;
-            while ($score[$i][$j] != 0) {
-                if (@{$traceback[$i][$j]} == 1 && $traceback[$i][$j][0]->[0] == $i-1 && $traceback[$i][$j][0]->[1] == $j-1) {
-                    $align1 = substr($seq1, $i-1, 1) . $align1;
-                    $align2 = substr($seq2, $j-1, 1) . $align2;
-                    ($i, $j) = ($i-1, $j-1);
-                } elsif (@{$traceback[$i][$j]} == 1 && $traceback[$i][$j][0]->[0] == $i-1) {
-                    $align1 = substr($seq1, $i-1, 1) . $align1;
-                    $align2 = "-" . $align2;
-                    $gaps++;
-                    $i--;
-                } elsif (@{$traceback[$i][$j]} == 1 && $traceback[$i][$j][0]->[1] == $j-1) {
-                    $align1 = "-" . $align1;
-                    $align2 = substr($seq2, $j-1, 1) . $align2;
-                    $gaps++;
-                    $j--;
-                }
+        # Recuperação do alinhamento
+        my ($alignment1, $alignment2, $num_gaps) = ('', '', 0);
+        my ($i, $j) = ($max_i, $max_j);
+        while ($i > 0 && $j > 0 && $score[$i][$j] > 0) {
+            if ($i > 0 && $j > 0 && $score[$i][$j] == $score[$i-1][$j-1] + (substr($seq1, $i-1, 1) eq substr($seq2, $j-1, 1) ? $match_score : $mismatch_score)) {
+                $alignment1 = substr($seq1, $i-1, 1) . $alignment1;
+                $alignment2 = substr($seq2, $j-1, 1) . $alignment2;
+                $i--; $j--;
+            } elsif ($i > 0 && $score[$i][$j] == $score[$i-1][$j] + $gap_penalty) {
+                $alignment1 = substr($seq1, $i-1, 1) . $alignment1;
+                $alignment2 = '-' . $alignment2;
+                $num_gaps++;
+                $i--;
+            } else {
+                $alignment1 = '-' . $alignment1;
+                $alignment2 = substr($seq2, $j-1, 1) . $alignment2;
+                $num_gaps++;
+                $j--;
             }
-            return ($align1, $align2, $gaps);
         }
-
-        # Recuperar o alinhamento a partir da posição de maior valor
-        my ($alignment1, $alignment2, $num_gaps) = $max_position ? traceback_alignment($max_position->[0], $max_position->[1], $seq1, $seq2, \@score, \@traceback) : ("", "", 0);
 
         my $end_time = time;
         my $execution_time = $end_time - $start_time;
