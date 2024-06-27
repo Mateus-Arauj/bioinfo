@@ -196,8 +196,8 @@ class AlignmentAlgorithms
 
     static void Main(string[] args)
     {
-        string seq1 = "MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKT"; // Substitua pela sua sequência 1
-        string seq2 = "MIPGTKLVIAFTSDLKDFSPLEYGEKHCRYLIDGRSYQMHLKHATVKKIVKAPGPLFHTGSGSTSSFRVGVVDFMIQGGDF"; // Substitua pela sua sequência 2
+        string seq1 = "MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKT"; 
+        string seq2 = "MIPGTKLVIAFTSDLKDFSPLEYGEKHCRYLIDGRSYQMHLKHATVKKIVKAPGPLFHTGSGSTSSFRVGVVDFMIQGGDF"; 
 
         // Smith-Waterman
         SmithWaterman(seq1, seq2, out string swAlignedSeq1, out string swAlignedSeq2, out int swMaxScore, out int swGapCount1, out int swGapCount2);
