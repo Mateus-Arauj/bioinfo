@@ -85,13 +85,11 @@ def client_program():
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect(("127.0.0.1", 65432))
     message = client_socket.recv(4096).decode()
-    seq1 = message.split(";")[0]
-    seq2 = message.split(";")[1]
-    print(seq1, seq2)
+    seq1 = message.split(";")[0].split(":")[1]
+    seq2 = message.split(";")[1].split(":")[1]
     nw_align1, nw_align2, nw_gaps, nw_score, nw_time = needleman_wunsch(seq1, seq2)
     sw_align1, sw_align2, sw_gaps, sw_score, sw_time = smith_waterman(seq1, seq2)
     result = f"Python;Needleman;Alignment1:{nw_align1};Alignment2:{nw_align2};AlignmentScore:{nw_score};Gap:{nw_gaps};ExecutionTime:{nw_time:.4f};Smith;Alignment1:{sw_align1};Alignment2:{sw_align2};AlignmentScore:{sw_score};Gap:{sw_gaps};ExecutionTime:{sw_time:.4f}"
-    print(result)
     client_socket.send(result.encode())
     client_socket.close()
 

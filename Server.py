@@ -4,7 +4,7 @@ import threading
 # Função para lidar com o cliente no servidor de broadcast
 def handle_broadcast_client(client_socket, sequence1, sequence2, results):
     try:
-        request = f"{sequence1};{sequence2}"
+        request = f"seq1:{sequence1};seq2:{sequence2}"
         client_socket.send(request.encode())
         response = client_socket.recv(4096).decode()
         results.append(response)

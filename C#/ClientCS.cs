@@ -175,7 +175,7 @@ class Program
     static void Main()
     {
         string server = "127.0.0.1";
-        int port = 9999;
+        int port = 65432;
 
         using (var client = new TcpClient(server, port))
         using (var stream = client.GetStream())
@@ -194,7 +194,7 @@ class Program
             SmithWaterman sw = new SmithWaterman(seq1, seq2, 1, -1, -1);
             sw.Align(out string swAlign1, out string swAlign2, out int swGaps, out int swScore, out double swTime);
 
-            string result = $"C;Needleman;Alignment1:{nwAlign1};Alignment2:{nwAlign2};AlignmentScore:{nwScore};Gap:{nwGaps};ExecutionTime:{nwTime:F4};Smith;Alignment1:{swAlign1};Alignment2:{swAlign2};AlignmentScore:{swScore};Gap:{swGaps};ExecutionTime:{swTime:F4}";
+            string result = $"C#;Needleman;Alignment1:{nwAlign1};Alignment2:{nwAlign2};AlignmentScore:{nwScore};Gap:{nwGaps};ExecutionTime:{nwTime:F4};Smith;Alignment1:{swAlign1};Alignment2:{swAlign2};AlignmentScore:{swScore};Gap:{swGaps};ExecutionTime:{swTime:F4}";
             byte[] resultBytes = Encoding.ASCII.GetBytes(result);
             stream.Write(resultBytes, 0, resultBytes.Length);
         }

@@ -266,8 +266,7 @@ void client_program() {
     char result[BUFFER_SIZE];
     snprintf(result, BUFFER_SIZE, "C;Needleman;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f;Smith;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f",
              nw_align1, nw_align2, nw_score, nw_gaps, nw_time, sw_align1, sw_align2, sw_score, sw_gaps, sw_time);
-    printf(result, BUFFER_SIZE, "C;Needleman;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f;Smith;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f",
-             nw_align1, nw_align2, nw_score, nw_gaps, nw_time, sw_align1, sw_align2, sw_score, sw_gaps, sw_time);)
+
     send(client_socket, result, strlen(result), 0);
     close(client_socket);
 

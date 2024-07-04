@@ -146,9 +146,9 @@ public class Server {
     }
 
     private static String formatResult(String result) {
-        if (result == null || result.isEmpty()) {
-            return "No results received.";
-        }
+        // if (result == null || result.isEmpty()) {
+        //     return "No results received.";
+        // }
 
         String[] parts = result.split(";");
         if (parts.length < 12) {  

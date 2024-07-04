@@ -1,12 +1,55 @@
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.time.Duration;
-import java.time.Instant;
+import java.io.*;
+import java.net.Socket;
+
+public class Client {
+
+    public static void main(String[] args) {
+        String serverAddress = "127.0.0.1";
+        int port = 65432;
+
+        try (Socket socket = new Socket(serverAddress, port);
+             InputStream input = socket.getInputStream();
+             OutputStream output = socket.getOutputStream();
+             BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+             PrintWriter writer = new PrintWriter(output, true)) {
+
+            // Receber dados do servidor
+            char[] buffer = new char[4096];
+            int bytesRead = reader.read(buffer);
+            String data = new String(buffer, 0, bytesRead);
+
+            // Processar dados recebidos
+            String[] tokens = data.split(";");
+            String seq1 = tokens[0].substring(6); // Skip "seq1:"
+            String seq2 = tokens[1].substring(6); // Skip "seq2:"
+
+            // Alinhamento Needleman-Wunsch
+            NeedlemanWunsch nw = new NeedlemanWunsch(seq1, seq2, 1, -1, -1);
+            AlignmentResult nwResult = nw.align();
+
+            // Alinhamento Smith-Waterman
+            SmithWaterman sw = new SmithWaterman(seq1, seq2, 1, -1, -1);
+            AlignmentResult swResult = sw.align();
+
+            // Preparar resultado para enviar de volta ao servidor
+            String result = String.format("C;Needleman;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f;Smith;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f",
+                    nwResult.alignment1, nwResult.alignment2, nwResult.score, nwResult.gaps, nwResult.timeTaken,
+                    swResult.alignment1, swResult.alignment2, swResult.score, swResult.gaps, swResult.timeTaken);
+
+            writer.println(result);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
 
 class NeedlemanWunsch {
-    private String seq1, seq2;
-    private int match, mismatch, gap;
+    private final String seq1;
+    private final String seq2;
+    private final int match;
+    private final int mismatch;
+    private final int gap;
 
     public NeedlemanWunsch(String seq1, String seq2, int match, int mismatch, int gap) {
         this.seq1 = seq1;
@@ -16,15 +59,12 @@ class NeedlemanWunsch {
         this.gap = gap;
     }
 
-    public Result align() {
-        Instant start = Instant.now();
+    public AlignmentResult align() {
+        long startTime = System.currentTimeMillis();
         int lenSeq1 = seq1.length();
         int lenSeq2 = seq2.length();
-
-        // Create the scoring matrix
         int[][] scoreMatrix = new int[lenSeq1 + 1][lenSeq2 + 1];
 
-        // Initialize the scoring matrix
         for (int i = 0; i <= lenSeq1; ++i) {
             scoreMatrix[i][0] = gap * i;
         }
@@ -32,28 +72,25 @@ class NeedlemanWunsch {
             scoreMatrix[0][j] = gap * j;
         }
 
-        // Fill the scoring matrix
         for (int i = 1; i <= lenSeq1; ++i) {
             for (int j = 1; j <= lenSeq2; ++j) {
                 int matchScore = scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch);
                 int deleteScore = scoreMatrix[i - 1][j] + gap;
                 int insertScore = scoreMatrix[i][j - 1] + gap;
-                scoreMatrix[i][j] = Math.max(matchScore, Math.max(deleteScore, insertScore));
+                scoreMatrix[i][j] = Math.max(Math.max(matchScore, deleteScore), insertScore);
             }
         }
 
-        // Traceback to find the best alignment
         StringBuilder align1 = new StringBuilder();
         StringBuilder align2 = new StringBuilder();
         int i = lenSeq1, j = lenSeq2;
         while (i > 0 || j > 0) {
-            int currentScore = scoreMatrix[i][j];
-            if (i > 0 && j > 0 && currentScore == scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch)) {
+            if (i > 0 && j > 0 && scoreMatrix[i][j] == scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch)) {
                 align1.append(seq1.charAt(i - 1));
                 align2.append(seq2.charAt(j - 1));
                 --i;
                 --j;
-            } else if (i > 0 && currentScore == scoreMatrix[i - 1][j] + gap) {
+            } else if (i > 0 && scoreMatrix[i][j] == scoreMatrix[i - 1][j] + gap) {
                 align1.append(seq1.charAt(i - 1));
                 align2.append('-');
                 --i;
@@ -64,20 +101,29 @@ class NeedlemanWunsch {
             }
         }
 
-        align1.reverse();
-        align2.reverse();
-        int gaps = (int) align1.chars().filter(c -> c == '-').count() + (int) align2.chars().filter(c -> c == '-').count();
-        int score = scoreMatrix[lenSeq1][lenSeq2];
-        Instant end = Instant.now();
-        double timeTaken = Duration.between(start, end).toMillis() / 1000.0;
+        String alignedSeq1 = align1.reverse().toString();
+        String alignedSeq2 = align2.reverse().toString();
 
-        return new Result(align1.toString(), align2.toString(), gaps, score, timeTaken);
+        int gaps = 0;
+        for (int k = 0; k < alignedSeq1.length(); ++k) {
+            if (alignedSeq1.charAt(k) == '-' || alignedSeq2.charAt(k) == '-') {
+                ++gaps;
+            }
+        }
+
+        int score = scoreMatrix[lenSeq1][lenSeq2];
+        double timeTaken = (System.currentTimeMillis() - startTime) / 1000.0;
+
+        return new AlignmentResult(alignedSeq1, alignedSeq2, gaps, score, timeTaken);
     }
 }
 
 class SmithWaterman {
-    private String seq1, seq2;
-    private int match, mismatch, gap;
+    private final String seq1;
+    private final String seq2;
+    private final int match;
+    private final int mismatch;
+    private final int gap;
 
     public SmithWaterman(String seq1, String seq2, int match, int mismatch, int gap) {
         this.seq1 = seq1;
@@ -87,43 +133,37 @@ class SmithWaterman {
         this.gap = gap;
     }
 
-    public Result align() {
-        Instant start = Instant.now();
+    public AlignmentResult align() {
+        long startTime = System.currentTimeMillis();
         int lenSeq1 = seq1.length();
         int lenSeq2 = seq2.length();
-
-        // Create the scoring matrix
         int[][] scoreMatrix = new int[lenSeq1 + 1][lenSeq2 + 1];
+        int maxScore = 0, maxI = 0, maxJ = 0;
 
-        // Fill the scoring matrix
-        int maxScore = 0;
-        int[] maxPos = {0, 0};
         for (int i = 1; i <= lenSeq1; ++i) {
             for (int j = 1; j <= lenSeq2; ++j) {
                 int matchScore = scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch);
                 int deleteScore = scoreMatrix[i - 1][j] + gap;
                 int insertScore = scoreMatrix[i][j - 1] + gap;
-                scoreMatrix[i][j] = Math.max(0, Math.max(matchScore, Math.max(deleteScore, insertScore)));
+                scoreMatrix[i][j] = Math.max(0, Math.max(Math.max(matchScore, deleteScore), insertScore));
                 if (scoreMatrix[i][j] >= maxScore) {
                     maxScore = scoreMatrix[i][j];
-                    maxPos[0] = i;
-                    maxPos[1] = j;
+                    maxI = i;
+                    maxJ = j;
                 }
             }
         }
 
-        // Traceback to find the best alignment
         StringBuilder align1 = new StringBuilder();
         StringBuilder align2 = new StringBuilder();
-        int i = maxPos[0], j = maxPos[1];
+        int i = maxI, j = maxJ;
         while (scoreMatrix[i][j] != 0) {
-            int currentScore = scoreMatrix[i][j];
-            if (i > 0 && j > 0 && currentScore == scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch)) {
+            if (i > 0 && j > 0 && scoreMatrix[i][j] == scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch)) {
                 align1.append(seq1.charAt(i - 1));
                 align2.append(seq2.charAt(j - 1));
                 --i;
                 --j;
-            } else if (i > 0 && currentScore == scoreMatrix[i - 1][j] + gap) {
+            } else if (i > 0 && scoreMatrix[i][j] == scoreMatrix[i - 1][j] + gap) {
                 align1.append(seq1.charAt(i - 1));
                 align2.append('-');
                 --i;
@@ -134,47 +174,34 @@ class SmithWaterman {
             }
         }
 
-        align1.reverse();
-        align2.reverse();
-        int gaps = (int) align1.chars().filter(c -> c == '-').count() + (int) align2.chars().filter(c -> c == '-').count();
-        int score = maxScore;
-        Instant end = Instant.now();
-        double timeTaken = Duration.between(start, end).toMillis() / 1000.0;
+        String alignedSeq1 = align1.reverse().toString();
+        String alignedSeq2 = align2.reverse().toString();
 
-        return new Result(align1.toString(), align2.toString(), gaps, score, timeTaken);
+        int gaps = 0;
+        for (int k = 0; k < alignedSeq1.length(); ++k) {
+            if (alignedSeq1.charAt(k) == '-' || alignedSeq2.charAt(k) == '-') {
+                ++gaps;
+            }
+        }
+
+        double timeTaken = (System.currentTimeMillis() - startTime) / 1000.0;
+
+        return new AlignmentResult(alignedSeq1, alignedSeq2, gaps, maxScore, timeTaken);
     }
 }
 
-class Result {
-    String align1, align2;
-    int gaps, score;
-    double timeTaken;
+class AlignmentResult {
+    public final String alignment1;
+    public final String alignment2;
+    public final int gaps;
+    public final int score;
+    public final double timeTaken;
 
-    public Result(String align1, String align2, int gaps, int score, double timeTaken) {
-        this.align1 = align1;
-        this.align2 = align2;
+    public AlignmentResult(String alignment1, String alignment2, int gaps, int score, double timeTaken) {
+        this.alignment1 = alignment1;
+        this.alignment2 = alignment2;
         this.gaps = gaps;
         this.score = score;
         this.timeTaken = timeTaken;
-    }
-
-    @Override
-    public String toString() {
-        return "Alignment:\n" + align1 + "\n" + align2 + "\nGaps: " + gaps + ", Score: " + score + ", Time: " + timeTaken + " seconds";
-    }
-}
-
-public class Main {
-    public static void main(String[] args) {
-        String seq1 = "TGGCTCCTCGGAAACCCAATGTGCGACGAATTCATCAGCGTGCCGGAATGGTCTTACATAGTGGAGAGGGCTAATCCAGCTAATGACCTCTGTTACCCAGGGAGCCTCAATGACTATGAAGAACTGAAACACCTATTGAGCAGAATAAATCATTTTGAGAAGATTCTGATCATCCCCAAGAGTTCTTGGCCCAATCATGAAACATCATTAGGGGTGAGCGCAGCTTGTCCATACCAGGGAACACCCTCCTTTTTCAGAAATGTGGTGTGGCTTATCAAAAAGAACGATGCATACCCAACAATAAAGATAAGCTACAATAACACCAATCGGGAAGATCTTTTGATACTGTGGGGGATTCATCATTCCAACAATGCAGAAGAGCAGATAAATCTCTATAAAAACCCAACCACCTATATTTCAGTTGGAACATCAACTTTAAACCAGAGATTGGTACCAAAAATAGCTACCAGATCCCAAGTAAACGGG";
-        String seq2 = "TATGATAAGAAGCTTGTTTCGCGCATTCAAATTCGAGTTAATCCTTTGCCGAAATTTGATTCTACCGTGTGGGTGACAGTCCGCAAAGTTCCTGCCTCATCGGACTTATCCGTTACCGCCATCTCTGCTATGTTCGCGGACGGAGCCTCACCGGTACTGGTTTATCAGTATGCAGCATCCGGAGTCCAAGCCAACAATAAATTGTTGTATGATCTTTCGGCGATGCGCGCTGATATTGGTGACATGAGAAAGTACGCCGTGCTCGTGTATTCAAAAGACGATGCGCTCGAGACGGACGAATTGGTACTTCATGTTGACATTGAGCACCAACGCATTCCCACATCTGGGGTGCTCCCAGTTTGAACCTGTGTTTTCCAGAACCCTCCCTCCGATTTCTGTGGCGGGAGCTGAGTTGGTAGTGTTGCTATAAACTACCTGAAGTCACTAAACGCTATGCGGTGAACGGGTTGTCCATCCAGCTTACGGC";
-
-        NeedlemanWunsch nw = new NeedlemanWunsch(seq1, seq2, 1, -1, -1);
-        Result nwResult = nw.align();
-        System.out.println("Needleman-Wunsch " + nwResult);
-
-        SmithWaterman sw = new SmithWaterman(seq1, seq2, 1, -1, -1);
-        Result swResult = sw.align();
-        System.out.println("Smith-Waterman " + swResult);
     }
 }
