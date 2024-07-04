@@ -7,12 +7,9 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -23,11 +20,8 @@ import javax.swing.JTextField;
 
 public class Server {
 
-    private static final int PORT = 65432;
-    private static final int MAX_CLIENTS = 5;
-
-    private static final List<ClientHandler> clientHandlers = Collections.synchronizedList(new ArrayList<>());
-    private static final List<String> clientResponses = Collections.synchronizedList(new ArrayList<>());
+    private static final String PYTHON_SERVER_HOST = "localhost";
+    private static final int PYTHON_SERVER_PORT = 65431;
 
     public static void main(String[] args) {
         JFrame frame = new JFrame("Sequence Sender");
@@ -40,21 +34,6 @@ public class Server {
         placeComponents(panel);
 
         frame.setVisible(true);
-
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("Server listening on port " + PORT);
-
-            while (clientHandlers.size() < MAX_CLIENTS) {
-                Socket clientSocket = serverSocket.accept();
-                System.out.println("Client connected: " + clientSocket.getRemoteSocketAddress());
-                ClientHandler clientHandler = new ClientHandler(clientSocket);
-                clientHandlers.add(clientHandler);
-                new Thread(clientHandler).start();
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     private static void placeComponents(JPanel panel) {
@@ -116,26 +95,9 @@ public class Server {
             public void actionPerformed(ActionEvent e) {
                 String sequence1 = sequenceText1.getText();
                 String sequence2 = sequenceText2.getText();
-                sendMessageToAllClients(sequence1 + ";" + sequence2);
-            }
-        });
-
-        JButton analyzeButton = new JButton("Analyze");
-        analyzeButton.setBackground(new Color(0, 0, 255));  // Azul
-        analyzeButton.setForeground(Color.WHITE);
-        gbc.gridx = 3;
-        gbc.gridy = 3;
-        gbc.gridwidth = 1;
-        gbc.gridheight = 1;
-        gbc.weightx = 0;
-        gbc.weighty = 0;
-        gbc.anchor = GridBagConstraints.EAST;
-        panel.add(analyzeButton, gbc);
-
-        analyzeButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                String bestResult = analyzeBestResult();
-                resultArea.setText(formatResult(bestResult));
+                String result = sendSequencesToPythonServer(sequence1, sequence2);
+                System.out.println("Received from Python server: " + result);
+                resultArea.setText(formatResult(result));
             }
         });
 
@@ -145,111 +107,60 @@ public class Server {
         gbc.gridx = 2;
         gbc.gridy = 3;
         gbc.anchor = GridBagConstraints.EAST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
         panel.add(resetButton, gbc);
 
         resetButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                clientResponses.clear();
                 resultArea.setText("");
                 System.out.println("Responses have been reset.");
             }
         });
     }
 
-    private static void sendMessageToAllClients(String message) {
-        synchronized (clientHandlers) {
-            for (ClientHandler clientHandler : clientHandlers) {
-                clientHandler.sendMessage(message);
-            }
-        }
-    }
+    private static String sendSequencesToPythonServer(String sequence1, String sequence2) {
+        String response = "";
 
-    private static String analyzeBestResult() {
-        String bestResult = null;
-        double bestScore = Double.NEGATIVE_INFINITY;
-        double bestGap = Double.POSITIVE_INFINITY;
-        double bestTime = Double.POSITIVE_INFINITY;
+        try (Socket socket = new Socket(PYTHON_SERVER_HOST, PYTHON_SERVER_PORT)) {
+            PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-        for (String response : clientResponses) {
-            String[] parts = response.split(";");
-            double needlemanScore = Double.parseDouble(parts[2].split(":")[1]);
-            double needlemanGap = Double.parseDouble(parts[3].split(":")[1]);
-            double needlemanTime = Double.parseDouble(parts[4].split(":")[1]);
+            out.println(sequence1 + ";" + sequence2);
+            response = in.readLine();
 
-            if ((needlemanScore > bestScore) ||
-                (needlemanScore == bestScore && needlemanGap < bestGap) ||
-                (needlemanScore == bestScore && needlemanGap == bestGap && needlemanTime < bestTime)) {
-                bestResult = response;
-                bestScore = needlemanScore;
-                bestGap = needlemanGap;
-                bestTime = needlemanTime;
-            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
-        return bestResult;
+        return response;
     }
 
     private static String formatResult(String result) {
-        if (result == null) {
+        if (result == null || result.isEmpty()) {
             return "No results received.";
         }
 
         String[] parts = result.split(";");
+        if (parts.length < 12) {  
+            return parts.length + "";// Verificação para 13 partes incluindo e-value
+            // return "Invalid response format.";
+        }
+
         StringBuilder formattedResult = new StringBuilder();
 
-        formattedResult.append("Client: ").append(parts[0]).append("\n\n");
+        formattedResult.append("Source: ").append(parts[0]).append("\n\n");
+        formattedResult.append("Lines of Code: ").append(parts[1].split(":")[1]).append("\n\n");
         formattedResult.append("Needleman-Wunsch\n");
-        formattedResult.append("  Alignment Score: ").append(parts[2].split(":")[1]).append("\n");
-        formattedResult.append("  Gap: ").append(parts[3].split(":")[1]).append("\n");
-        formattedResult.append("  Execution Time: ").append(parts[4].split(":")[1]).append("\n\n");
+        formattedResult.append("  Alignment Score: ").append(parts[3].split(":")[1]).append("\n");
+        formattedResult.append("  Gap: ").append(parts[4].split(":")[1]).append("\n");
+        formattedResult.append("  Execution Time: ").append(parts[5].split(":")[1]).append("\n");
+        formattedResult.append("  E-Value: ").append(parts[6].split(":")[1]).append("\n\n");
         formattedResult.append("Smith-Waterman\n");
-        formattedResult.append("  Alignment Score: ").append(parts[6].split(":")[1]).append("\n");
-        formattedResult.append("  Gap: ").append(parts[7].split(":")[1]).append("\n");
-        formattedResult.append("  Execution Time: ").append(parts[8].split(":")[1]).append("\n");
+        formattedResult.append("  Alignment Score: ").append(parts[8].split(":")[1]).append("\n");
+        formattedResult.append("  Gap: ").append(parts[9].split(":")[1]).append("\n");
+        formattedResult.append("  Execution Time: ").append(parts[10].split(":")[1]).append("\n");
+        formattedResult.append("  E-Value: ").append(parts[11].split(":")[1]).append("\n");
 
         return formattedResult.toString();
-    }
-
-    private static class ClientHandler implements Runnable {
-        private final Socket clientSocket;
-        private PrintWriter out;
-        private BufferedReader in;
-
-        public ClientHandler(Socket socket) {
-            this.clientSocket = socket;
-        }
-
-        @Override
-        public void run() {
-            try {
-                out = new PrintWriter(clientSocket.getOutputStream(), true);
-                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-                // Wait for response from the client
-                String response = in.readLine();
-                if (response != null) {
-                    System.out.println("Response from " + getClientAddress() + ": " + response);
-                    synchronized (clientResponses) {
-                        clientResponses.add(response);
-                    }
-                }
-
-                clientSocket.close();
-                System.out.println("Connection closed with " + getClientAddress());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        public void sendMessage(String message) {
-            if (out != null) {
-                out.println(message);
-                out.flush();  // Certifique-se de que a mensagem seja enviada imediatamente
-            }
-        }
-
-        public String getClientAddress() {
-            return clientSocket.getRemoteSocketAddress().toString();
-        }
     }
 }
