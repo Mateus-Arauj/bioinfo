@@ -13,25 +13,20 @@ public class Client {
              BufferedReader reader = new BufferedReader(new InputStreamReader(input));
              PrintWriter writer = new PrintWriter(output, true)) {
 
-            // Receber dados do servidor
             char[] buffer = new char[4096];
             int bytesRead = reader.read(buffer);
             String data = new String(buffer, 0, bytesRead);
 
-            // Processar dados recebidos
             String[] tokens = data.split(";");
-            String seq1 = tokens[0].substring(6); // Skip "seq1:"
-            String seq2 = tokens[1].substring(6); // Skip "seq2:"
+            String seq1 = tokens[0].substring(6); 
+            String seq2 = tokens[1].substring(6); 
 
-            // Alinhamento Needleman-Wunsch
             NeedlemanWunsch nw = new NeedlemanWunsch(seq1, seq2, 1, -1, -1);
             AlignmentResult nwResult = nw.align();
 
-            // Alinhamento Smith-Waterman
             SmithWaterman sw = new SmithWaterman(seq1, seq2, 1, -1, -1);
             AlignmentResult swResult = sw.align();
 
-            // Preparar resultado para enviar de volta ao servidor
             String result = String.format("C;Needleman;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f;Smith;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f",
                     nwResult.alignment1, nwResult.alignment2, nwResult.score, nwResult.gaps, nwResult.timeTaken,
                     swResult.alignment1, swResult.alignment2, swResult.score, swResult.gaps, swResult.timeTaken);

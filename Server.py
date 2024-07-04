@@ -1,7 +1,7 @@
 import socket
 import threading
 
-# Função para lidar com o cliente no servidor de broadcast
+
 def handle_broadcast_client(client_socket, sequence1, sequence2, results):
     try:
         request = f"seq1:{sequence1};seq2:{sequence2}"
@@ -13,7 +13,6 @@ def handle_broadcast_client(client_socket, sequence1, sequence2, results):
     finally:
         client_socket.close()
 
-# Função para iniciar o servidor de broadcast
 def start_broadcast_server(sequence1, sequence2):
     broadcast_results = []
 
@@ -38,8 +37,8 @@ def start_broadcast_server(sequence1, sequence2):
 
 # Função para enviar o melhor resultado para o servidor Java
 def send_best_result_to_java_server(best_result):
-    java_server_ip = "127.0.0.1"  # IP do servidor Java
-    java_server_port = 65433      # Porta do servidor Java
+    java_server_ip = "127.0.0.1"  
+    java_server_port = 65433      
     delimiter = "<END>"
 
     try:
@@ -50,7 +49,7 @@ def send_best_result_to_java_server(best_result):
     except Exception as e:
         print(f"Error sending best result to Java server: {e}")
 
-# Função para lidar com o cliente no servidor principal
+
 def handle_client(client_socket):
     request = client_socket.recv(1024).decode()
     print(f"Received request: {request}")
@@ -58,14 +57,13 @@ def handle_client(client_socket):
     sequence1 = sequences[0]
     sequence2 = sequences[1]
 
-    # Iniciar o servidor de broadcast e aguardar resultados
+
     broadcast_results = start_broadcast_server(sequence1, sequence2)
 
-    # Printar os resultados recebidos dos clientes
     for result in broadcast_results:
         print(f"Received from client: {result}")
 
-    # Selecionar o melhor resultado baseado no AlignmentScore do Needleman-Wunsch
+    # Selecionar o melhor resultado
     def extract_score(result):
         parts = result.split(";")
         nw_score_part = next((part for part in parts if part.startswith("Needleman;AlignmentScore")), None)
@@ -77,7 +75,6 @@ def handle_client(client_socket):
     best_result = max(broadcast_results, key=extract_score)
     print(f"Best result: {best_result}")
 
-    # Enviar o melhor resultado para o servidor Java
     send_best_result_to_java_server(best_result)
 
     client_socket.close()

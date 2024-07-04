@@ -194,7 +194,6 @@ public class Server {
                         }
                         String input = inputBuilder.toString().replace(END_DELIMITER, "");
                         System.out.println("Received from Python server: " + input);
-                        // Process the input and possibly send a response back
                         resultArea.append("Received from Python server: " + input + "\n");
                         out.println("Result received: " + input);
                     } catch (Exception e) {
