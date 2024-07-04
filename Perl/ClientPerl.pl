@@ -15,12 +15,10 @@ sub start_client {
         Proto    => 'tcp'
     ) or die "Could not connect to server: $!";
 
-    # Receber a sequência do servidor
     my $sequence = '';
     $client_socket->recv($sequence, 1024);
     print "Sequence received from server: $sequence\n";
 
-    # Suas sequências predefinidas
     my $seq2 = "LKDDAWFCNWISVQGPGAGDEVRFPCYRWVEGNGVLSLPEGTGRTVGEDPQGLFQKHREEELEERRKLYR";
     my @macaco = (
         "CCCAGCAGTTGAGGATATTGGGCACAGCTGCATGTAAGGTGGTGTCACCTTGTTGAGCACATGGTAGTCCATGTTCATTCTCCAGGAGCCATCAGGCTTCTTTGCAGGCCACACAGGGCTGTTGTGGGGGCTGTGGGAGGCCTATTTGTACTTCATGTAATTCCTGAATTGTTTGGGTAGTTTCAGAGTGTCCCCCAGCAGGAGTATTGCCTCACATTCACTGTCTGCCTGGGCTGGGGCAAGTGTACAGCCACCCATGTGGCCCATCCTCTTTTTGTTCCTTGATTACTTTCTGGACTTGGTCCTTGCTTTTATCCAGCTCACTGAGGTCTGCCAAAGATTCCAGACACATTATAACCCTTCTTAAATTGGAAATGACCCAGACATTCCATGAGTACCTGAAATAATTTTAAGATTTTAAGCTATATAATCAGACAAGAGAAAGAAATAAAGGGCGACCAAATCAGAAAAGGGGAAGTCAAACTGTCATTATGATTATATACCTAAAAAATCCTATAGACTCATCCAAAAAGCTCCTAGAACTGCAAA",
@@ -38,7 +36,6 @@ sub start_client {
         "ATGGCGGTTTTGTGGAATAGAAAAGGGGGCAAGGTGGGGAAAAGATTGAGAAATCGGAAGGTTGCTGTGTCTGTGTAGAAAGAAGTAGATATGGGAGACTTTTCATTTTGTTCTGTACTAAGAAAAATTCTTCTGCCTTGGGATCCTGTTGATCTATGACCTTACCCCCAACCCTGTGCTCTCTGAAACATGTGCTGTGTCCACTCAGGGTTAAATGGATTAAGGGCGGTGCAAGATGTGCTTTGTTAAACAGATGCTTGAAGGCAGCATGCTCCTTAAGAGTCATCACCACTCCCTAATCTCAAGTACCCATGGACACAAACACTCTGCCTAGGAAAACCAGAGACCTTTGTTCACTTGTTTGTCTGCTGACCTTCCCTCCACTACTGTCCTATGACCCTGCCAAATCCCCCTCTGCG"
     );
 
-    # Função para executar o algoritmo de Needleman-Wunsch
     sub needleman_wunsch {
         my ($seq1, $seq2, $match_score, $mismatch_score, $gap_penalty) = @_;
         $match_score = 1 unless defined $match_score;
@@ -48,10 +45,8 @@ sub start_client {
         my $len1 = length($seq1);
         my $len2 = length($seq2);
 
-        # Inicialização da matriz de pontuações
         my @score = map { [(0) x ($len2 + 1)] } 0..$len1;
 
-        # Inicialização das penalidades para gaps
         for my $i (1..$len1) {
             $score[$i][0] = $gap_penalty * $i;
         }
@@ -59,7 +54,6 @@ sub start_client {
             $score[0][$j] = $gap_penalty * $j;
         }
 
-        # Preenchimento da matriz de pontuações
         for my $i (1..$len1) {
             for my $j (1..$len2) {
                 my $match = $score[$i-1][$j-1] + ($seq1 =~ /$seq2/ ? $match_score : $mismatch_score);
@@ -69,7 +63,6 @@ sub start_client {
             }
         }
 
-        # Recuperação do alinhamento
         my ($alignment1, $alignment2, $num_gaps) = ('', '', 0);
         my ($i, $j) = ($len1, $len2);
         while ($i > 0 || $j > 0) {
@@ -96,7 +89,6 @@ sub start_client {
         return ($alignment1, $alignment2, $score[$len1][$len2], $num_gaps, $execution_time);
     }
 
-    # Função para executar o algoritmo de Smith-Waterman ajustado
     sub smith_waterman {
         my ($seq1, $seq2, $match_score, $mismatch_score, $gap_penalty) = @_;
         $match_score = 1 unless defined $match_score;
@@ -106,11 +98,9 @@ sub start_client {
         my $len1 = length($seq1);
         my $len2 = length($seq2);
 
-        # Inicialização da matriz de pontuações e da matriz de trilhas
         my @score = map { [(0) x ($len2 + 1)] } 0..$len1;
         my ($max_score, $max_i, $max_j) = (0, 0, 0);
 
-        # Preenchimento da matriz de pontuações
         for my $i (1..$len1) {
             for my $j (1..$len2) {
                 my $match = $score[$i-1][$j-1] + (substr($seq1, $i-1, 1) eq substr($seq2, $j-1, 1) ? $match_score : $mismatch_score);
@@ -126,7 +116,6 @@ sub start_client {
             }
         }
 
-        # Recuperação do alinhamento
         my ($alignment1, $alignment2, $num_gaps) = ('', '', 0);
         my ($i, $j) = ($max_i, $max_j);
         while ($i > 0 && $j > 0 && $score[$i][$j] > 0) {
@@ -153,7 +142,6 @@ sub start_client {
         return ([$alignment1], [$alignment2], $max_score, [$num_gaps], $execution_time);
     }
 
-    # Função para escolher o melhor alinhamento com base no número de gaps, alinhamento e tempo de execução
     sub choose_best_alignment {
         my (@results) = @_;
         my ($best_needleman, $best_smith);
@@ -181,7 +169,6 @@ sub start_client {
         return ($best_needleman, $best_smith);
     }
 
-    # Função para escolher o melhor alinhamento entre macaco e gorila para cada algoritmo
     sub select_best_overall {
         my ($needleman_macaco, $smith_macaco, $needleman_gorila, $smith_gorila) = @_;
 
@@ -201,28 +188,23 @@ sub start_client {
     my @macaco_results;
     my @gorila_results;
 
-    # Executa o algoritmo de Needleman-Wunsch e Smith-Waterman para sequências de macaco
     foreach my $seq (@macaco) {
         my ($alignment1, $alignment2, $alignment_score_n, $num_gaps, $execution_time_n) = needleman_wunsch($seq, $seq2);
         my ($alignments1, $alignments2, $alignment_score_s, $smith_gaps, $execution_time_s) = smith_waterman($seq, $seq2);
         push @macaco_results, [['needleman', $alignment1, $alignment2, $alignment_score_n, $num_gaps, $execution_time_n], ['smith', $alignments1, $alignments2, $alignment_score_s, $smith_gaps, $execution_time_s]];
     }
 
-    # Executa o algoritmo de Needleman-Wunsch e Smith-Waterman para sequências de gorila
     foreach my $seq (@gorila) {
         my ($alignment1, $alignment2, $alignment_score_n, $num_gaps, $execution_time_n) = needleman_wunsch($seq, $seq2);
         my ($alignments1, $alignments2, $alignment_score_s, $smith_gaps, $execution_time_s) = smith_waterman($seq, $seq2);
         push @gorila_results, [['needleman', $alignment1, $alignment2, $alignment_score_n, $num_gaps, $execution_time_n], ['smith', $alignments1, $alignments2, $alignment_score_s, $smith_gaps, $execution_time_s]];
     }
 
-    # Escolhe o melhor alinhamento para cada algoritmo
     my ($best_needleman_macaco, $best_smith_macaco) = choose_best_alignment(@macaco_results);
     my ($best_needleman_gorila, $best_smith_gorila) = choose_best_alignment(@gorila_results);
 
-    # Seleciona o melhor alinhamento entre macaco e gorila para cada algoritmo
     my ($best_needleman, $best_smith) = select_best_overall($best_needleman_macaco, $best_smith_macaco, $best_needleman_gorila, $best_smith_gorila);
 
-    # Enviar o melhor resultado para o servidor
     my $response_message = sprintf("Perl;Needleman;AlignmentScore:%d;Gap:%d;ExecutionTime:%.6f;Smith;AlignmentScore:%d;Gap:%d;ExecutionTime:%.6f",
         $best_needleman->[3], $best_needleman->[4], $best_needleman->[5],
         $best_smith->[3], $best_smith->[4], $best_smith->[5]

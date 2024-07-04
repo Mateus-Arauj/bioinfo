@@ -1,5 +1,8 @@
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.BufferedReader;
@@ -17,7 +20,6 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
-import javax.swing.SwingConstants;
 
 public class Server {
 
@@ -32,7 +34,7 @@ public class Server {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(600, 400);
 
-        JPanel panel = new JPanel();
+        JPanel panel = new JPanel(new GridBagLayout());
         panel.setBackground(Color.WHITE);
         frame.add(panel);
         placeComponents(panel);
@@ -56,21 +58,43 @@ public class Server {
     }
 
     private static void placeComponents(JPanel panel) {
-        panel.setLayout(null);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
 
-        JLabel userLabel = new JLabel("Sequence:", SwingConstants.RIGHT);
-        userLabel.setBounds(10, 20, 80, 25);
-        panel.add(userLabel);
+        JLabel userLabel1 = new JLabel("Sequence 1:");
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.anchor = GridBagConstraints.EAST;
+        panel.add(userLabel1, gbc);
 
-        JTextField sequenceText = new JTextField(20);
-        sequenceText.setBounds(100, 20, 365, 25);
-        panel.add(sequenceText);
+        JTextField sequenceText1 = new JTextField(20);
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(sequenceText1, gbc);
+
+        JLabel userLabel2 = new JLabel("Sequence 2:");
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        gbc.gridwidth = 1;
+        panel.add(userLabel2, gbc);
+
+        JTextField sequenceText2 = new JTextField(20);
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        panel.add(sequenceText2, gbc);
 
         JButton sendButton = new JButton("Send");
-        sendButton.setBounds(480, 20, 80, 25);
-        sendButton.setBackground(Color.GREEN);
-        sendButton.setForeground(Color.BLACK);
-        panel.add(sendButton);
+        sendButton.setBackground(new Color(34, 139, 34));  // Verde
+        sendButton.setForeground(Color.WHITE);
+        gbc.gridx = 3;
+        gbc.gridy = 0;
+        gbc.gridheight = 2;
+        gbc.fill = GridBagConstraints.BOTH;
+        panel.add(sendButton, gbc);
 
         JTextArea resultArea = new JTextArea();
         resultArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
@@ -79,21 +103,34 @@ public class Server {
         resultArea.setForeground(Color.BLACK);
 
         JScrollPane scrollPane = new JScrollPane(resultArea);
-        scrollPane.setBounds(10, 60, 550, 250);
-        panel.add(scrollPane);
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        gbc.gridwidth = 4;
+        gbc.gridheight = 1;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1.0;
+        gbc.weighty = 1.0;
+        panel.add(scrollPane, gbc);
 
         sendButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                String sequence = sequenceText.getText();
-                sendMessageToAllClients(sequence);
+                String sequence1 = sequenceText1.getText();
+                String sequence2 = sequenceText2.getText();
+                sendMessageToAllClients(sequence1 + ";" + sequence2);
             }
         });
 
         JButton analyzeButton = new JButton("Analyze");
-        analyzeButton.setBounds(480, 320, 80, 25);
-        analyzeButton.setBackground(Color.BLUE);
+        analyzeButton.setBackground(new Color(0, 0, 255));  // Azul
         analyzeButton.setForeground(Color.WHITE);
-        panel.add(analyzeButton);
+        gbc.gridx = 3;
+        gbc.gridy = 3;
+        gbc.gridwidth = 1;
+        gbc.gridheight = 1;
+        gbc.weightx = 0;
+        gbc.weighty = 0;
+        gbc.anchor = GridBagConstraints.EAST;
+        panel.add(analyzeButton, gbc);
 
         analyzeButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
@@ -103,10 +140,12 @@ public class Server {
         });
 
         JButton resetButton = new JButton("Reset");
-        resetButton.setBounds(380, 320, 80, 25);
-        resetButton.setBackground(Color.RED);
+        resetButton.setBackground(new Color(255, 69, 0));  // Laranja
         resetButton.setForeground(Color.WHITE);
-        panel.add(resetButton);
+        gbc.gridx = 2;
+        gbc.gridy = 3;
+        gbc.anchor = GridBagConstraints.EAST;
+        panel.add(resetButton, gbc);
 
         resetButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
@@ -158,7 +197,7 @@ public class Server {
         String[] parts = result.split(";");
         StringBuilder formattedResult = new StringBuilder();
 
-        formattedResult.append("Client: ").append(parts[0]).append("\n");
+        formattedResult.append("Client: ").append(parts[0]).append("\n\n");
         formattedResult.append("Needleman-Wunsch\n");
         formattedResult.append("  Alignment Score: ").append(parts[2].split(":")[1]).append("\n");
         formattedResult.append("  Gap: ").append(parts[3].split(":")[1]).append("\n");
