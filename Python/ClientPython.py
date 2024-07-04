@@ -89,11 +89,11 @@ def smith_waterman(seq1, seq2, match_score=1, mismatch_score=-1, gap_penalty=-1)
         for prev_i, prev_j in traceback[i][j]:
             for align1, align2, gaps in traceback_alignments(prev_i, prev_j):
                 if prev_i == i - 1 and prev_j == j - 1:
-                    alignments.append((seq1[i-1] + align1, seq2[j-1] + align2, gaps))
+                    alignments.append((seq1[i-1] + align1, seq2[i-1] + align2, gaps))
                 elif prev_i == i - 1:
                     alignments.append((seq1[i-1] + align1, "-" + align2, gaps + 1))
                 elif prev_j == j - 1:
-                    alignments.append(("-" + align1, seq2[j-1] + align2, gaps + 1))
+                    alignments.append(("-" + align1, seq2[i-1] + align2, gaps + 1))
         return alignments
 
     all_alignments1 = []
@@ -125,12 +125,19 @@ def start_client(host='127.0.0.1', port=65431):
             print("Seq2:", seq2)
 
             # Executa o algoritmo de Needleman-Wunsch
+            start_time = time.time()
             alignment1_n, alignment2_n, score_n, num_gaps_n = needleman_wunsch(seq1, seq2)
+            end_time = time.time()
+            nw_time = end_time - start_time
+
             # Executa o algoritmo de Smith-Waterman
+            start_time = time.time()
             alignments1_s, alignments2_s, max_score_s, smith_gaps = smith_waterman(seq1, seq2)
+            end_time = time.time()
+            sw_time = end_time - start_time
 
             # Enviar o melhor resultado para o servidor
-            response_message = f"Client;{seq1};Needleman-Wunsch;Score:{score_n};Gap:{num_gaps_n};Time:0;Smith-Waterman;Score:{max_score_s};Gap:{smith_gaps[0]};Time:0"
+            response_message = f"Python;{seq1};Needleman-Wunsch;Score:{score_n};Gap:{num_gaps_n};Time:{nw_time:.6f};Smith-Waterman;Score:{max_score_s};Gap:{smith_gaps[0]};Time:{sw_time:.6f}"
             client_socket.sendall(response_message.encode())
             print(response_message)
             print("Response sent to server")
