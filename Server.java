@@ -23,6 +23,7 @@ public class Server {
 
     private static final int JAVA_SERVER_PORT = 65433;
     private static JTextArea resultArea;
+    private static final String END_DELIMITER = "<END>";
 
     public static void main(String[] args) {
         JFrame frame = new JFrame("Sequence Sender");
@@ -123,20 +124,25 @@ public class Server {
     }
 
     private static String sendSequencesToPythonServer(String sequence1, String sequence2) {
-        String response = "";
+        StringBuilder response = new StringBuilder();
 
         try (Socket socket = new Socket("localhost", 65431)) {
             PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
             out.println(sequence1 + ";" + sequence2);
-            response = in.readLine();
-
+            String line;
+            while ((line = in.readLine()) != null) {
+                response.append(line);
+                if (line.contains(END_DELIMITER)) {
+                    break;
+                }
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        return response;
+        return response.toString().replace(END_DELIMITER, "");
     }
 
     private static String formatResult(String result) {
@@ -153,10 +159,14 @@ public class Server {
 
         formattedResult.append("Source: ").append(parts[0]).append("\n\n");
         formattedResult.append("Needleman-Wunsch\n");
+        formattedResult.append("  Alignment1: ").append(parts[1].split(":")[1]).append("\n");
+        formattedResult.append("  Alignment2: ").append(parts[2].split(":")[1]).append("\n");
         formattedResult.append("  Alignment Score: ").append(parts[3].split(":")[1]).append("\n");
         formattedResult.append("  Gap: ").append(parts[4].split(":")[1]).append("\n");
         formattedResult.append("  Execution Time: ").append(parts[5].split(":")[1]).append("\n\n");
         formattedResult.append("Smith-Waterman\n");
+        formattedResult.append("  Alignment1: ").append(parts[6].split(":")[1]).append("\n");
+        formattedResult.append("  Alignment2: ").append(parts[7].split(":")[1]).append("\n");
         formattedResult.append("  Alignment Score: ").append(parts[8].split(":")[1]).append("\n");
         formattedResult.append("  Gap: ").append(parts[9].split(":")[1]).append("\n");
         formattedResult.append("  Execution Time: ").append(parts[10].split(":")[1]).append("\n");
@@ -174,13 +184,19 @@ public class Server {
                          BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                          PrintWriter out = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream()), true)) {
 
+                        StringBuilder inputBuilder = new StringBuilder();
                         String inputLine;
                         while ((inputLine = in.readLine()) != null) {
-                            System.out.println("Received from Python server: " + inputLine);
-                            // Process the input and possibly send a response back
-                            resultArea.append("Received from Python server: " + inputLine + "\n");
-                            out.println("Result received: " + inputLine);
+                            inputBuilder.append(inputLine);
+                            if (inputLine.contains(END_DELIMITER)) {
+                                break;
+                            }
                         }
+                        String input = inputBuilder.toString().replace(END_DELIMITER, "");
+                        System.out.println("Received from Python server: " + input);
+                        // Process the input and possibly send a response back
+                        resultArea.append("Received from Python server: " + input + "\n");
+                        out.println("Result received: " + input);
                     } catch (Exception e) {
                         System.err.println("Error in client communication: " + e.getMessage());
                     }

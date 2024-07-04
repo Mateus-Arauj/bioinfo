@@ -40,11 +40,12 @@ def start_broadcast_server(sequence1, sequence2):
 def send_best_result_to_java_server(best_result):
     java_server_ip = "127.0.0.1"  # IP do servidor Java
     java_server_port = 65433      # Porta do servidor Java
+    delimiter = "<END>"
 
     try:
         java_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         java_socket.connect((java_server_ip, java_server_port))
-        java_socket.send(best_result.encode())
+        java_socket.send((best_result + delimiter).encode())
         java_socket.close()
     except Exception as e:
         print(f"Error sending best result to Java server: {e}")
