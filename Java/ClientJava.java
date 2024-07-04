@@ -1,264 +1,180 @@
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.time.Duration;
+import java.time.Instant;
 
-public class ClientJava {
+class NeedlemanWunsch {
+    private String seq1, seq2;
+    private int match, mismatch, gap;
 
-    public static void main(String[] args) {
-        new ClientJava().startClient("127.0.0.1", 65432);
+    public NeedlemanWunsch(String seq1, String seq2, int match, int mismatch, int gap) {
+        this.seq1 = seq1;
+        this.seq2 = seq2;
+        this.match = match;
+        this.mismatch = mismatch;
+        this.gap = gap;
     }
 
-    public void startClient(String host, int port) {
-        try (Socket clientSocket = new Socket(host, port);
-             BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-             PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true)) {
+    public Result align() {
+        Instant start = Instant.now();
+        int lenSeq1 = seq1.length();
+        int lenSeq2 = seq2.length();
 
-            // Receber a sequência do servidor
-            String sequence = in.readLine();
-            System.out.println("Sequence received from server: " + sequence);
+        // Create the scoring matrix
+        int[][] scoreMatrix = new int[lenSeq1 + 1][lenSeq2 + 1];
 
-            String seq2 = "LKDDAWFCNWISVQGPGAGDEVRFPCYRWVEGNGVLSLPEGTGRTVGEDPQGLFQKHREEELEERRKLYR";
-            String[] macaco = {
-                "CCCAGCAGTTGAGGATATTGGGCACAGCTGCATGTAAGGTGGTGTCACCTTGTTGAGCACATGGTAGTCCATGTTCATTCTCCAGGAGCCATCAGGCTTCTTTGCAGGCCACACAGGGCTGTTGTGGGGGCTGTGGGAGGCCTATTTGTACTTCATGTAATTCCTGAATTGTTTGGGTAGTTTCAGAGTGTCCCCCAGCAGGAGTATTGCCTCACATTCACTGTCTGCCTGGGCTGGGGCAAGTGTACAGCCACCCATGTGGCCCATCCTCTTTTTGTTCCTTGATTACTTTCTGGACTTGGTCCTTGCTTTTATCCAGCTCACTGAGGTCTGCCAAAGATTCCAGACACATTATAACCCTTCTTAAATTGGAAATGACCCAGACATTCCATGAGTACCTGAAATAATTTTAAGATTTTAAGCTATATAATCAGACAAGAGAAAGAAATAAAGGGCGACCAAATCAGAAAAGGGGAAGTCAAACTGTCATTATGATTATATACCTAAAAAATCCTATAGACTCATCCAAAAAGCTCCTAGAACTGCAAA",
-                "TGTGACTTGTACCCTAGAGTTGTCCTGCCTTGGAGTAAAGAGGCTGGCCTTTTGTACCCTTGTATTAGTCAATTATTGGCTACATGACACCAATGTATCCAACTGGTGCAGAGGGGATGGTGCACCCTCTCCAGGATTTCCAGGTAAGGCAACTCCTGTCAGTGGAGGGCAGTGTTAGCTGTGGGGTGCTGCTGTGTTAGCAGCAAACATTCACCACGGCAGGGGGCTGGACTTACCAATGTACATTACCAGTTTAATATACATTTAATGTACAACACCAGTTTAATGCACATTTAATGTACCATCAAGGAGGTTGGATGCATTGACTTTTCAAAGGGGATCTGAGTGGGGCACCAATGGCATCTACTACGTGAGAGACAGAGCTTTATCCTACTGGGAAAGTGGGGGAGGCAATCTAGAATTCACACTTCAATGTGATCTCAATTTGAGGGATGAGGGAGCTGGGCTATTTACCCACCAACTCCTGGCAGCCCTTACTGAAGGAGACTCCTGGGGAGGTTAATTCTCAGTGTGGCCTGTGTGTAGCCACAGAGAGCTCCAGCAGCCGACAGTCATGT",
-                "GCTGGGGCCCGGTCTTGGACTCACATGAATGAAGTAGTTGGCATAGGAGTCCTCCTTGGTAACAAAGTGGTACAGGTCAGCCAAGTACTCGTCCTTGGGGACAGAGAGGGGAGAGCTTACGTTGGGTGAGGCTGGGGGGTCTAGAGGGGAAGAGGAGGCTTGGAAGGGCTGGTGACCTCCCCCAGGCCACACAACTGCAGGTGGGAGGTCCCAGCCAGGCTCCTCTCTCTGCCAAGGTTGGTGCTTGGGGCCAGCCCCTGGGAACTCCCTTAAACTTTTCTGGCTTCTTGTCCCCATCTCTGTGTCTCCACAGACTTAGCACAGTGCCTTGTTTTTTGTTTTGTTTCGTTTGAGACGGAGTCTCGCACTGTTGCCCGGGCTGGAGTGCAGTGGTGCAATCTCGGCTCACTGCAACCTCTGCCTCCTGGGTTCAAGCGATTCTCCTGCCTCAGCCTCCTGAGTAGCTGGGATTACAGGCGCGTGCCACTACGCCCAGCTAAGTTTTTGTATTTTTAGTAGAGACAGGGTTTCACCATGTTGGC",
-                "CTCTGAAATACAAGACCTTTAGGGATCACTTAGCCCAACAGCCTCAATGGATAGAGATAACTGAGGCCCAGAGCAGGCATTTGTTCAAGTTCAGAGAAGAAGAACGTTAACGCCTCTGTGTGACCTGGCATCAGGCGGGGCTAGACTATCACCTCCAAGTCAGGCTGCCTGAGGTCATACTGGCAGGGATGGCCCAACCACTGGATCAGGAACCCACCAGAGCATGCCTAAGTCTTGTCACTAAATCTCTATGCCCAGCCATTGAGACAAAGAATCTTACAGATCCCATACAAGACTCTACTGTGACCCCACCAGAGCCTTGCATTGTTGGGCACACCTGCCCCAACACTCCCAGCCAGCATCATGACTTCTAGGATGGATTCAGATGGCCACACCCAGATATCACTCCACTCCCCTTTTAGCTTCCATGAGAGATTTAGCTTCTGTGAAAGCAGGGATGTCAGGACCCAAGGGGCAGGTCTGTGGACAAACTGACTCACCTCATACTGTAGCTTCTGTTTCCCTGCAGGCATGCCTGTGGCTTCATGAATCTTCACCTTAATGACAGAGACCTGTGGGATCAAGCAGC",
-                "ATACAGGGTCTTGCTCTGTTGACCAGACCGTGACCTCCTGGGTTCAAGCGAGGACTCAGCCTCCTGAGTAGCCGGGACTACAGATTGGACGACTGATTATTGGACAGAATGGCATCTTGTCTACACCTGCGGTCTCCTGCATTATCAGGAAGATCAAGGCAGCTGGTGGAATCATTCTAACAGCCAGCCACTGCCCTGGAGGACCAGGGGGAGAGTTTGGAGTGAAGTTTAATGTTGCCAATGGAGGGCAGACTTCTTGGAGGAAGTGAAATTTGAACTGCGATGTGAAGAATGAGCAGGAGTTAGTGAGGTGAAGATGAGAGAAGGAGTGTTGCAAACACAGGTCAGTCTGTGCAAAGGCCCTGA"
-            };
-            String[] gorila = {
-                "TACCAGTTTAAGGGCCTGTGCTACTTCACCAACGGGACGGAGCGCGTGCGGGCTGTGACCAGACACATCTATAACCGAGAGGAGTACGTGCGCTTCGACAGCGACGTGGGGGTGTACCGGGCAGTGACGCCGCAGGGGCGGCCTGCCGCCGACTACTGGAACAGCCAGAAGGAAGCCTGGAGGAGACCCGGGCGTCGGTGGACAGGGTGTGCAGACACAACTACGAGGTGTCGTACCGCGGGATC",
-                "TACCAGTTTAAGGGCATGTGCTACTTCACCAACGGGACGGAGCGCGTGCGTGTTGTGACGAGATACATCTATAACCGAGAGGAGTACGCGCGCTTCGACAGCGACGTGGGGGTGTATCAGGCGGTGACGCCGCTGGGGCCGCCTGACGCCGACTACTGGAACAGCCAGAAGGAAGCCTGGAGGAGACCCGGGCGTCGGTGGACAGGGTGTGCAGACACAACTACCAGTTGGAGCTCCTCACGACC",
-                "CCAAGTATTAGCTAACCCATCAATAATTATCATGTATGTCGTGCATTACTGCCAGACACCATGAATAATGCACAGTACTACAAATGTCCAACCACCTGTAACACATACAACCCCCCCCCTCACTGCTCCACCCAACGGAATACCAACCAATCCATCCCTCACAAAAAGTACATAAACATAAAGTCATTTATCGTACATAGCACATTCCAGTTAAATCATCCTCGCCCCCACGGATGCCCCCCCTCAGATA",
-                "ATGGCGGTTTTGTGGAATAGAAAAGGGGGCAAGGTGGGGAAAAGATTGAGAAATCGGAAGGTTGCTGTGTCTGTGTAGAAAGAAGTAGACATGGGAGACTTTTCATTTTGTTCTGTACTAAGAAAAATTCTTCTGCCTTGGGATCCTGTTGATCTATGACCTTACCCCCAACCCTGTGCTCTCTGAAACATGTGTTGTGTCCACTCAGGGTTAAATGGATTAAGGGCGGTGCAAGATGTGCTTTGTTAAACAGATGCTTGAAGGCAGCATGCTCGTTAAGAGTCATCACCACTCCCTAATCTCAAGTACCCAGGGACACAAACACTGCGGAAGGCTGCAGGGTCCTCTGCCTAGGAAAACCAGAGACCTTTGTTCACTTGTTTATCTGCTGACCTTCCCTCCACTACTGTCCTATGACCCTGCCACATCCCCCTCTGCG",
-                "ATGGCGGTTTTGTGGAATAGAAAAGGGGGCAAGGTGGGGAAAAGATTGAGAAATCGGAAGGTTGCTGTGTCTGTGTAGAAAGAAGTAGATATGGGAGACTTTTCATTTTGTTCTGTACTAAGAAAAATTCTTCTGCCTTGGGATCCTGTTGATCTATGACCTTACCCCCAACCCTGTGCTCTCTGAAACATGTGCTGTGTCCACTCAGGGTTAAATGGATTAAGGGCGGTGCAAGATGTGCTTTGTTAAACAGATGCTTGAAGGCAGCATGCTCCTTAAGAGTCATCACCACTCCCTAATCTCAAGTACCCATGGACACAAACACTCTGCCTAGGAAAACCAGAGACCTTTGTTCACTTGTTTGTCTGCTGACCTTCCCTCCACTACTGTCCTATGACCCTGCCAAATCCCCCTCTGCG"
-            };
-
-            // Resultados para sequências de macaco
-            NeedlemanWunschResult[] macacoResults = new NeedlemanWunschResult[macaco.length];
-            SmithWatermanResult[] macacoSmithResults = new SmithWatermanResult[macaco.length];
-
-            for (int i = 0; i < macaco.length; i++) {
-                macacoResults[i] = needlemanWunsch(macaco[i], seq2, 1, -1, -1);
-                macacoSmithResults[i] = smithWaterman(macaco[i], seq2, 1, -1, -1);
-            }
-
-            // Resultados para sequências de gorila
-            NeedlemanWunschResult[] gorilaResults = new NeedlemanWunschResult[gorila.length];
-            SmithWatermanResult[] gorilaSmithResults = new SmithWatermanResult[gorila.length];
-
-            for (int i = 0; i < gorila.length; i++) {
-                gorilaResults[i] = needlemanWunsch(gorila[i], seq2, 1, -1, -1);
-                gorilaSmithResults[i] = smithWaterman(gorila[i], seq2, 1, -1, -1);
-            }
-
-            // Escolher o melhor alinhamento para cada algoritmo
-            NeedlemanWunschResult bestNeedlemanMacaco = chooseBestNeedlemanWunsch(macacoResults);
-            SmithWatermanResult bestSmithMacaco = chooseBestSmithWaterman(macacoSmithResults);
-            NeedlemanWunschResult bestNeedlemanGorila = chooseBestNeedlemanWunsch(gorilaResults);
-            SmithWatermanResult bestSmithGorila = chooseBestSmithWaterman(gorilaSmithResults);
-
-            // Selecionar o melhor alinhamento entre macaco e gorila para cada algoritmo
-            Object[] bestOverall = selectBestOverall(bestNeedlemanMacaco, bestSmithMacaco, bestNeedlemanGorila, bestSmithGorila);
-            NeedlemanWunschResult bestNeedleman = (NeedlemanWunschResult) bestOverall[0];
-            SmithWatermanResult bestSmith = (SmithWatermanResult) bestOverall[1];
-
-            // Enviar o melhor resultado para o servidor
-            String responseMessage = String.format("Java;Needleman;AlignmentScore:%d;Gap:%d;ExecutionTime:%d;Smith;AlignmentScore:%d;Gap:%d;ExecutionTime:%d",
-                    bestNeedleman.score, bestNeedleman.numGaps, bestNeedleman.executionTime,
-                    bestSmith.score, bestSmith.numGaps[0], bestSmith.executionTime);
-            out.println(responseMessage);
-            System.out.println(responseMessage);
-            System.out.println("Response sent to server");
-
-        } catch (Exception e) {
-            e.printStackTrace();
+        // Initialize the scoring matrix
+        for (int i = 0; i <= lenSeq1; ++i) {
+            scoreMatrix[i][0] = gap * i;
         }
-    }
-
-    class NeedlemanWunschResult {
-        String alignment1;
-        String alignment2;
-        int score;
-        int numGaps;
-        long executionTime;
-    }
-
-    NeedlemanWunschResult needlemanWunsch(String seq1, String seq2, int matchScore, int mismatchScore, int gapPenalty) {
-        long startTime = System.currentTimeMillis();
-        int len1 = seq1.length();
-        int len2 = seq2.length();
-
-        // Inicialização da matriz de pontuações
-        int[][] score = new int[len1 + 1][len2 + 1];
-
-        // Inicialização das penalidades para gaps
-        for (int i = 1; i <= len1; i++) {
-            score[i][0] = gapPenalty * i;
-        }
-        for (int j = 1; j <= len2; j++) {
-            score[0][j] = gapPenalty * j;
+        for (int j = 0; j <= lenSeq2; ++j) {
+            scoreMatrix[0][j] = gap * j;
         }
 
-        // Preenchimento da matriz de pontuações
-        for (int i = 1; i <= len1; i++) {
-            for (int j = 1; j <= len2; j++) {
-                int match = score[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? matchScore : mismatchScore);
-                int delete = score[i - 1][j] + gapPenalty;
-                int insert = score[i][j - 1] + gapPenalty;
-                score[i][j] = Math.max(Math.max(match, delete), insert);
+        // Fill the scoring matrix
+        for (int i = 1; i <= lenSeq1; ++i) {
+            for (int j = 1; j <= lenSeq2; ++j) {
+                int matchScore = scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch);
+                int deleteScore = scoreMatrix[i - 1][j] + gap;
+                int insertScore = scoreMatrix[i][j - 1] + gap;
+                scoreMatrix[i][j] = Math.max(matchScore, Math.max(deleteScore, insertScore));
             }
         }
 
-        // Recuperação do alinhamento
-        String alignment1 = "";
-        String alignment2 = "";
-        int numGaps = 0;
-        int i = len1, j = len2;
+        // Traceback to find the best alignment
+        StringBuilder align1 = new StringBuilder();
+        StringBuilder align2 = new StringBuilder();
+        int i = lenSeq1, j = lenSeq2;
         while (i > 0 || j > 0) {
-            if (i > 0 && j > 0 && score[i][j] == score[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? matchScore : mismatchScore)) {
-                alignment1 = seq1.charAt(i - 1) + alignment1;
-                alignment2 = seq2.charAt(j - 1) + alignment2;
-                i--;
-                j--;
-            } else if (i > 0 && score[i][j] == score[i - 1][j] + gapPenalty) {
-                alignment1 = seq1.charAt(i - 1) + alignment1;
-                alignment2 = "-" + alignment2;
-                numGaps++;
-                i--;
+            int currentScore = scoreMatrix[i][j];
+            if (i > 0 && j > 0 && currentScore == scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch)) {
+                align1.append(seq1.charAt(i - 1));
+                align2.append(seq2.charAt(j - 1));
+                --i;
+                --j;
+            } else if (i > 0 && currentScore == scoreMatrix[i - 1][j] + gap) {
+                align1.append(seq1.charAt(i - 1));
+                align2.append('-');
+                --i;
             } else {
-                alignment1 = "-" + alignment1;
-                alignment2 = seq2.charAt(j - 1) + alignment2;
-                numGaps++;
-                j--;
+                align1.append('-');
+                align2.append(seq2.charAt(j - 1));
+                --j;
             }
         }
 
-        long endTime = System.currentTimeMillis();
-        NeedlemanWunschResult result = new NeedlemanWunschResult();
-        result.alignment1 = alignment1;
-        result.alignment2 = alignment2;
-        result.score = score[len1][len2];
-        result.numGaps = numGaps;
-        result.executionTime = endTime - startTime;
+        align1.reverse();
+        align2.reverse();
+        int gaps = (int) align1.chars().filter(c -> c == '-').count() + (int) align2.chars().filter(c -> c == '-').count();
+        int score = scoreMatrix[lenSeq1][lenSeq2];
+        Instant end = Instant.now();
+        double timeTaken = Duration.between(start, end).toMillis() / 1000.0;
 
-        return result;
+        return new Result(align1.toString(), align2.toString(), gaps, score, timeTaken);
+    }
+}
+
+class SmithWaterman {
+    private String seq1, seq2;
+    private int match, mismatch, gap;
+
+    public SmithWaterman(String seq1, String seq2, int match, int mismatch, int gap) {
+        this.seq1 = seq1;
+        this.seq2 = seq2;
+        this.match = match;
+        this.mismatch = mismatch;
+        this.gap = gap;
     }
 
-    class SmithWatermanResult {
-        String[] alignments1;
-        String[] alignments2;
-        int score;
-        int[] numGaps;
-        long executionTime;
-    }
+    public Result align() {
+        Instant start = Instant.now();
+        int lenSeq1 = seq1.length();
+        int lenSeq2 = seq2.length();
 
-    SmithWatermanResult smithWaterman(String seq1, String seq2, int matchScore, int mismatchScore, int gapPenalty) {
-        long startTime = System.currentTimeMillis();
-        int len1 = seq1.length();
-        int len2 = seq2.length();
+        // Create the scoring matrix
+        int[][] scoreMatrix = new int[lenSeq1 + 1][lenSeq2 + 1];
 
-        // Inicialização da matriz de pontuações e da matriz de trilhas
-        int[][] score = new int[len1 + 1][len2 + 1];
+        // Fill the scoring matrix
         int maxScore = 0;
-        int[] maxPosition = new int[2];
-
-        // Preenchimento da matriz de pontuações
-        for (int i = 1; i <= len1; i++) {
-            for (int j = 1; j <= len2; j++) {
-                int match = score[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? matchScore : mismatchScore);
-                int delete = score[i - 1][j] + gapPenalty;
-                int insert = score[i][j - 1] + gapPenalty;
-                score[i][j] = Math.max(0, Math.max(Math.max(match, delete), insert));
-                if (score[i][j] > maxScore) {
-                    maxScore = score[i][j];
-                    maxPosition[0] = i;
-                    maxPosition[1] = j;
+        int[] maxPos = {0, 0};
+        for (int i = 1; i <= lenSeq1; ++i) {
+            for (int j = 1; j <= lenSeq2; ++j) {
+                int matchScore = scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch);
+                int deleteScore = scoreMatrix[i - 1][j] + gap;
+                int insertScore = scoreMatrix[i][j - 1] + gap;
+                scoreMatrix[i][j] = Math.max(0, Math.max(matchScore, Math.max(deleteScore, insertScore)));
+                if (scoreMatrix[i][j] >= maxScore) {
+                    maxScore = scoreMatrix[i][j];
+                    maxPos[0] = i;
+                    maxPos[1] = j;
                 }
             }
         }
 
-        // Recuperar o alinhamento a partir da posição de maior valor
-        String[] alignment1 = new String[0];
-        String[] alignment2 = new String[0];
-        int numGaps = 0;
-        if (maxPosition[0] > 0 && maxPosition[1] > 0) {
-            String[] result = tracebackAlignment(maxPosition[0], maxPosition[1], score, seq1, seq2, matchScore, mismatchScore, gapPenalty);
-            alignment1 = new String[]{result[0]};
-            alignment2 = new String[]{result[1]};
-            numGaps = Integer.parseInt(result[2]);
-        }
-
-        long endTime = System.currentTimeMillis();
-        SmithWatermanResult result = new SmithWatermanResult();
-        result.alignments1 = alignment1;
-        result.alignments2 = alignment2;
-        result.score = maxScore;
-        result.numGaps = new int[]{numGaps};
-        result.executionTime = endTime - startTime;
-
-        return result;
-    }
-
-    String[] tracebackAlignment(int i, int j, int[][] score, String seq1, String seq2, int matchScore, int mismatchScore, int gapPenalty) {
-        String align1 = "", align2 = "";
-        int gaps = 0;
-        while (score[i][j] != 0) {
-            if (i > 0 && j > 0 && score[i][j] == score[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? matchScore : mismatchScore)) {
-                align1 = seq1.charAt(i - 1) + align1;
-                align2 = seq2.charAt(j - 1) + align2;
-                i--;
-                j--;
-            } else if (i > 0 && score[i][j] == score[i - 1][j] + gapPenalty) {
-                align1 = seq1.charAt(i - 1) + align1;
-                align2 = "-" + align2;
-                gaps++;
-                i--;
+        // Traceback to find the best alignment
+        StringBuilder align1 = new StringBuilder();
+        StringBuilder align2 = new StringBuilder();
+        int i = maxPos[0], j = maxPos[1];
+        while (scoreMatrix[i][j] != 0) {
+            int currentScore = scoreMatrix[i][j];
+            if (i > 0 && j > 0 && currentScore == scoreMatrix[i - 1][j - 1] + (seq1.charAt(i - 1) == seq2.charAt(j - 1) ? match : mismatch)) {
+                align1.append(seq1.charAt(i - 1));
+                align2.append(seq2.charAt(j - 1));
+                --i;
+                --j;
+            } else if (i > 0 && currentScore == scoreMatrix[i - 1][j] + gap) {
+                align1.append(seq1.charAt(i - 1));
+                align2.append('-');
+                --i;
             } else {
-                align1 = "-" + align1;
-                align2 = seq2.charAt(j - 1) + align2;
-                gaps++;
-                j--;
+                align1.append('-');
+                align2.append(seq2.charAt(j - 1));
+                --j;
             }
         }
-        return new String[]{align1, align2, Integer.toString(gaps)};
+
+        align1.reverse();
+        align2.reverse();
+        int gaps = (int) align1.chars().filter(c -> c == '-').count() + (int) align2.chars().filter(c -> c == '-').count();
+        int score = maxScore;
+        Instant end = Instant.now();
+        double timeTaken = Duration.between(start, end).toMillis() / 1000.0;
+
+        return new Result(align1.toString(), align2.toString(), gaps, score, timeTaken);
+    }
+}
+
+class Result {
+    String align1, align2;
+    int gaps, score;
+    double timeTaken;
+
+    public Result(String align1, String align2, int gaps, int score, double timeTaken) {
+        this.align1 = align1;
+        this.align2 = align2;
+        this.gaps = gaps;
+        this.score = score;
+        this.timeTaken = timeTaken;
     }
 
-    NeedlemanWunschResult chooseBestNeedlemanWunsch(NeedlemanWunschResult[] results) {
-        NeedlemanWunschResult bestResult = null;
-        for (NeedlemanWunschResult result : results) {
-            if (bestResult == null ||
-                    result.executionTime < bestResult.executionTime ||
-                    (result.executionTime == bestResult.executionTime && result.numGaps < bestResult.numGaps) ||
-                    (result.executionTime == bestResult.executionTime && result.numGaps == bestResult.numGaps && result.score > bestResult.score)) {
-                bestResult = result;
-            }
-        }
-        return bestResult;
+    @Override
+    public String toString() {
+        return "Alignment:\n" + align1 + "\n" + align2 + "\nGaps: " + gaps + ", Score: " + score + ", Time: " + timeTaken + " seconds";
     }
+}
 
-    SmithWatermanResult chooseBestSmithWaterman(SmithWatermanResult[] results) {
-        SmithWatermanResult bestResult = null;
-        for (SmithWatermanResult result : results) {
-            if (bestResult == null ||
-                    result.executionTime < bestResult.executionTime ||
-                    (result.executionTime == bestResult.executionTime && result.numGaps[0] < bestResult.numGaps[0]) ||
-                    (result.executionTime == bestResult.executionTime && result.numGaps[0] == bestResult.numGaps[0] && result.score > bestResult.score)) {
-                bestResult = result;
-            }
-        }
-        return bestResult;
-    }
+public class Main {
+    public static void main(String[] args) {
+        String seq1 = "TGGCTCCTCGGAAACCCAATGTGCGACGAATTCATCAGCGTGCCGGAATGGTCTTACATAGTGGAGAGGGCTAATCCAGCTAATGACCTCTGTTACCCAGGGAGCCTCAATGACTATGAAGAACTGAAACACCTATTGAGCAGAATAAATCATTTTGAGAAGATTCTGATCATCCCCAAGAGTTCTTGGCCCAATCATGAAACATCATTAGGGGTGAGCGCAGCTTGTCCATACCAGGGAACACCCTCCTTTTTCAGAAATGTGGTGTGGCTTATCAAAAAGAACGATGCATACCCAACAATAAAGATAAGCTACAATAACACCAATCGGGAAGATCTTTTGATACTGTGGGGGATTCATCATTCCAACAATGCAGAAGAGCAGATAAATCTCTATAAAAACCCAACCACCTATATTTCAGTTGGAACATCAACTTTAAACCAGAGATTGGTACCAAAAATAGCTACCAGATCCCAAGTAAACGGG";
+        String seq2 = "TATGATAAGAAGCTTGTTTCGCGCATTCAAATTCGAGTTAATCCTTTGCCGAAATTTGATTCTACCGTGTGGGTGACAGTCCGCAAAGTTCCTGCCTCATCGGACTTATCCGTTACCGCCATCTCTGCTATGTTCGCGGACGGAGCCTCACCGGTACTGGTTTATCAGTATGCAGCATCCGGAGTCCAAGCCAACAATAAATTGTTGTATGATCTTTCGGCGATGCGCGCTGATATTGGTGACATGAGAAAGTACGCCGTGCTCGTGTATTCAAAAGACGATGCGCTCGAGACGGACGAATTGGTACTTCATGTTGACATTGAGCACCAACGCATTCCCACATCTGGGGTGCTCCCAGTTTGAACCTGTGTTTTCCAGAACCCTCCCTCCGATTTCTGTGGCGGGAGCTGAGTTGGTAGTGTTGCTATAAACTACCTGAAGTCACTAAACGCTATGCGGTGAACGGGTTGTCCATCCAGCTTACGGC";
 
-    Object[] selectBestOverall(NeedlemanWunschResult needlemanMacaco, SmithWatermanResult smithMacaco, NeedlemanWunschResult needlemanGorila, SmithWatermanResult smithGorila) {
-        NeedlemanWunschResult bestNeedleman = (needlemanMacaco.executionTime < needlemanGorila.executionTime ||
-                (needlemanMacaco.executionTime == needlemanGorila.executionTime && needlemanMacaco.numGaps < needlemanGorila.numGaps) ||
-                (needlemanMacaco.executionTime == needlemanGorila.executionTime && needlemanMacaco.numGaps == needlemanGorila.numGaps && needlemanMacaco.score > needlemanGorila.score)) ? needlemanMacaco : needlemanGorila;
+        NeedlemanWunsch nw = new NeedlemanWunsch(seq1, seq2, 1, -1, -1);
+        Result nwResult = nw.align();
+        System.out.println("Needleman-Wunsch " + nwResult);
 
-        SmithWatermanResult bestSmith = (smithMacaco.executionTime < smithGorila.executionTime ||
-                (smithMacaco.executionTime == smithGorila.executionTime && smithMacaco.numGaps[0] < smithGorila.numGaps[0]) ||
-                (smithMacaco.executionTime == smithGorila.executionTime && smithMacaco.numGaps[0] == smithGorila.numGaps[0] && smithMacaco.score > smithGorila.score)) ? smithMacaco : smithGorila;
-
-        return new Object[]{bestNeedleman, bestSmith};
+        SmithWaterman sw = new SmithWaterman(seq1, seq2, 1, -1, -1);
+        Result swResult = sw.align();
+        System.out.println("Smith-Waterman " + swResult);
     }
 }

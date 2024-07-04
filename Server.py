@@ -1,8 +1,55 @@
 import socket
 import threading
-import random
-import time
 
+# Função para lidar com o cliente no servidor de broadcast
+def handle_broadcast_client(client_socket, sequence1, sequence2, results):
+    try:
+        request = f"{sequence1};{sequence2}"
+        client_socket.send(request.encode())
+        response = client_socket.recv(4096).decode()
+        results.append(response)
+    except Exception as e:
+        print(f"Error communicating with client: {e}")
+    finally:
+        client_socket.close()
+
+# Função para iniciar o servidor de broadcast
+def start_broadcast_server(sequence1, sequence2):
+    broadcast_results = []
+
+    def broadcast_to_clients():
+        broadcast_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        broadcast_server.bind(("0.0.0.0", 65432))
+        broadcast_server.listen(5)
+        print("Broadcast Server listening on port 65432")
+
+        while len(broadcast_results) < 3:  # Esperar 3 respostas
+            client_socket, addr = broadcast_server.accept()
+            client_handler = threading.Thread(target=handle_broadcast_client, args=(client_socket, sequence1, sequence2, broadcast_results))
+            client_handler.start()
+
+        broadcast_server.close()
+
+    broadcast_thread = threading.Thread(target=broadcast_to_clients)
+    broadcast_thread.start()
+    broadcast_thread.join()
+
+    return broadcast_results
+
+# Função para enviar o melhor resultado para o servidor Java
+def send_best_result_to_java_server(best_result):
+    java_server_ip = "127.0.0.1"  # IP do servidor Java
+    java_server_port = 65433      # Porta do servidor Java
+
+    try:
+        java_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        java_socket.connect((java_server_ip, java_server_port))
+        java_socket.send(best_result.encode())
+        java_socket.close()
+    except Exception as e:
+        print(f"Error sending best result to Java server: {e}")
+
+# Função para lidar com o cliente no servidor principal
 def handle_client(client_socket):
     request = client_socket.recv(1024).decode()
     print(f"Received request: {request}")
@@ -10,25 +57,28 @@ def handle_client(client_socket):
     sequence1 = sequences[0]
     sequence2 = sequences[1]
 
-    # Simulação de múltiplos clients (substitua pelo cálculo real)
-    mock_results = []
-    for i in range(3):  # Simulando três clientes
-        score_n = random.randint(50, 100)
-        num_gaps_n = random.randint(0, 10)
-        execution_time_n = round(random.uniform(0.1, 0.5), 6)
-        evalue_n = round(random.uniform(0.001, 0.01), 6)
-        score_s = random.randint(50, 100)
-        num_gaps_s = random.randint(0, 10)
-        execution_time_s = round(random.uniform(0.1, 0.5), 6)
-        evalue_s = round(random.uniform(0.001, 0.01), 6)
-        mock_result = f"Python;LinesOfCode:200;Needleman;AlignmentScore:{score_n};Gap:{num_gaps_n};ExecutionTime:{execution_time_n};EValue:{evalue_n};Smith;AlignmentScore:{score_s};Gap:{num_gaps_s};ExecutionTime:{execution_time_s};EValue:{evalue_s}"
-        mock_results.append(mock_result)
-        time.sleep(0.1)  # Simulando o tempo de resposta de cada cliente
+    # Iniciar o servidor de broadcast e aguardar resultados
+    broadcast_results = start_broadcast_server(sequence1, sequence2)
+
+    # Printar os resultados recebidos dos clientes
+    for result in broadcast_results:
+        print(f"Received from client: {result}")
 
     # Selecionar o melhor resultado baseado no AlignmentScore do Needleman-Wunsch
-    best_result = max(mock_results, key=lambda x: int(x.split(";")[3].split(":")[1]))
-    print(f"Sending best result: {best_result}")
-    client_socket.send(best_result.encode())
+    def extract_score(result):
+        parts = result.split(";")
+        nw_score_part = next((part for part in parts if part.startswith("Needleman;AlignmentScore")), None)
+        if nw_score_part is not None:
+            nw_score = int(nw_score_part.split(":")[1])
+            return nw_score
+        return float('-inf')  # Retornar uma pontuação mínima se não encontrado
+
+    best_result = max(broadcast_results, key=extract_score)
+    print(f"Best result: {best_result}")
+
+    # Enviar o melhor resultado para o servidor Java
+    send_best_result_to_java_server(best_result)
+
     client_socket.close()
 
 def start_server():

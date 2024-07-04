@@ -1,212 +1,284 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 #include <time.h>
 
-#define BUFFER_SIZE 1024
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define BUFFER_SIZE 4096
 
-// Função para medir o tempo de execução
-double get_time() {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+typedef struct {
+    char* seq1;
+    char* seq2;
+    int match;
+    int mismatch;
+    int gap;
+} NeedlemanWunsch;
+
+NeedlemanWunsch* createNeedlemanWunsch(const char* seq1, const char* seq2, int match, int mismatch, int gap) {
+    NeedlemanWunsch* nw = (NeedlemanWunsch*)malloc(sizeof(NeedlemanWunsch));
+    nw->seq1 = strdup(seq1);
+    nw->seq2 = strdup(seq2);
+    nw->match = match;
+    nw->mismatch = mismatch;
+    nw->gap = gap;
+    return nw;
 }
 
-// Função para inicializar a matriz de pontuações
-void initialize_score_matrix(int *score, int len1, int len2, int gap_penalty) {
-    for (int i = 1; i <= len1; i++) {
-        score[i * (len2 + 1)] = gap_penalty * i;
-    }
-    for (int j = 1; j <= len2; j++) {
-        score[j] = gap_penalty * j;
-    }
+void freeNeedlemanWunsch(NeedlemanWunsch* nw) {
+    free(nw->seq1);
+    free(nw->seq2);
+    free(nw);
 }
 
-// Função para executar o algoritmo de Needleman-Wunsch
-void needleman_wunsch(const char *seq1, const char *seq2, int len1, int len2, int match_score, int mismatch_score, int gap_penalty, char *alignment1, char *alignment2, int *alignment_score, int *num_gaps, double *execution_time) {
-    double start_time = get_time();
+void alignNeedlemanWunsch(NeedlemanWunsch* nw, char** align1, char** align2, int* gaps, int* score, double* time_taken) {
+    clock_t start = clock();
+    int len_seq1 = strlen(nw->seq1);
+    int len_seq2 = strlen(nw->seq2);
 
-    int *score = (int *)malloc((len1 + 1) * (len2 + 1) * sizeof(int));
-    initialize_score_matrix(score, len1, len2, gap_penalty);
-
-    // Preenchimento da matriz de pontuações
-    for (int i = 1; i <= len1; i++) {
-        for (int j = 1; j <= len2; j++) {
-            int match = score[(i - 1) * (len2 + 1) + (j - 1)] + (seq1[i - 1] == seq2[j - 1] ? match_score : mismatch_score);
-            int delete = score[(i - 1) * (len2 + 1) + j] + gap_penalty;
-            int insert = score[i * (len2 + 1) + (j - 1)] + gap_penalty;
-            score[i * (len2 + 1) + j] = match > delete ? (match > insert ? match : insert) : (delete > insert ? delete : insert);
-        }
-    }
-
-    // Recuperação do alinhamento
-    int i = len1, j = len2;
-    *num_gaps = 0;
-    int alignment_index = 0;
-
-    while (i > 0 || j > 0) {
-        if (i > 0 && j > 0 && score[i * (len2 + 1) + j] == score[(i - 1) * (len2 + 1) + (j - 1)] + (seq1[i - 1] == seq2[j - 1] ? match_score : mismatch_score)) {
-            alignment1[alignment_index] = seq1[i - 1];
-            alignment2[alignment_index] = seq2[j - 1];
-            i--;
-            j--;
-        } else if (i > 0 && score[i * (len2 + 1) + j] == score[(i - 1) * (len2 + 1) + j] + gap_penalty) {
-            alignment1[alignment_index] = seq1[i - 1];
-            alignment2[alignment_index] = '-';
-            (*num_gaps)++;
-            i--;
+    int** score_matrix = (int**)malloc((len_seq1 + 1) * sizeof(int*));
+    for (int i = 0; i <= len_seq1; ++i) {
+        score_matrix[i] = (int*)malloc((len_seq2 + 1) * sizeof(int));
+        if (i == 0) {
+            for (int j = 0; j <= len_seq2; ++j) {
+                score_matrix[i][j] = nw->gap * j;
+            }
         } else {
-            alignment1[alignment_index] = '-';
-            alignment2[alignment_index] = seq2[j - 1];
-            (*num_gaps)++;
-            j--;
+            score_matrix[i][0] = nw->gap * i;
         }
-        alignment_index++;
     }
 
-    alignment1[alignment_index] = '\0';
-    alignment2[alignment_index] = '\0';
-    *alignment_score = score[len1 * (len2 + 1) + len2];
-    *execution_time = get_time() - start_time;
+    for (int i = 1; i <= len_seq1; ++i) {
+        for (int j = 1; j <= len_seq2; ++j) {
+            int match_score = score_matrix[i - 1][j - 1] + (nw->seq1[i - 1] == nw->seq2[j - 1] ? nw->match : nw->mismatch);
+            int delete_score = score_matrix[i - 1][j] + nw->gap;
+            int insert_score = score_matrix[i][j - 1] + nw->gap;
+            score_matrix[i][j] = MAX(MAX(match_score, delete_score), insert_score);
+        }
+    }
 
-    free(score);
+    *align1 = (char*)malloc((len_seq1 + len_seq2 + 1) * sizeof(char));
+    *align2 = (char*)malloc((len_seq1 + len_seq2 + 1) * sizeof(char));
+    int idx1 = 0, idx2 = 0;
+    int i = len_seq1, j = len_seq2;
+    while (i > 0 || j > 0) {
+        int current_score = score_matrix[i][j];
+        if (i > 0 && j > 0 && current_score == score_matrix[i - 1][j - 1] + (nw->seq1[i - 1] == nw->seq2[j - 1] ? nw->match : nw->mismatch)) {
+            (*align1)[idx1++] = nw->seq1[i - 1];
+            (*align2)[idx2++] = nw->seq2[j - 1];
+            --i;
+            --j;
+        } else if (i > 0 && current_score == score_matrix[i - 1][j] + nw->gap) {
+            (*align1)[idx1++] = nw->seq1[i - 1];
+            (*align2)[idx2++] = '-';
+            --i;
+        } else {
+            (*align1)[idx1++] = '-';
+            (*align2)[idx2++] = nw->seq2[j - 1];
+            --j;
+        }
+    }
+    (*align1)[idx1] = '\0';
+    (*align2)[idx2] = '\0';
+
+    for (int k = 0; k < idx1 / 2; ++k) {
+        char temp = (*align1)[k];
+        (*align1)[k] = (*align1)[idx1 - k - 1];
+        (*align1)[idx1 - k - 1] = temp;
+    }
+    for (int k = 0; k < idx2 / 2; ++k) {
+        char temp = (*align2)[k];
+        (*align2)[k] = (*align2)[idx2 - k - 1];
+        (*align2)[idx2 - k - 1] = temp;
+    }
+
+    *gaps = 0;
+    for (int k = 0; k < idx1; ++k) {
+        if ((*align1)[k] == '-' || (*align2)[k] == '-') {
+            (*gaps)++;
+        }
+    }
+    *score = score_matrix[len_seq1][len_seq2];
+    *time_taken = ((double)(clock() - start)) / CLOCKS_PER_SEC;
+
+    for (int i = 0; i <= len_seq1; ++i) {
+        free(score_matrix[i]);
+    }
+    free(score_matrix);
 }
 
-// Função para executar o algoritmo de Smith-Waterman
-void smith_waterman(const char *seq1, const char *seq2, int len1, int len2, int match_score, int mismatch_score, int gap_penalty, char *alignment1, char *alignment2, int *alignment_score, int *num_gaps, double *execution_time) {
-    double start_time = get_time();
+typedef struct {
+    char* seq1;
+    char* seq2;
+    int match;
+    int mismatch;
+    int gap;
+} SmithWaterman;
 
-    int *score = (int *)calloc((len1 + 1) * (len2 + 1), sizeof(int));
-    int max_score = 0, max_i = 0, max_j = 0;
+SmithWaterman* createSmithWaterman(const char* seq1, const char* seq2, int match, int mismatch, int gap) {
+    SmithWaterman* sw = (SmithWaterman*)malloc(sizeof(SmithWaterman));
+    sw->seq1 = strdup(seq1);
+    sw->seq2 = strdup(seq2);
+    sw->match = match;
+    sw->mismatch = mismatch;
+    sw->gap = gap;
+    return sw;
+}
 
-    // Preenchimento da matriz de pontuações
-    for (int i = 1; i <= len1; i++) {
-        for (int j = 1; j <= len2; j++) {
-            int match = score[(i - 1) * (len2 + 1) + (j - 1)] + (seq1[i - 1] == seq2[j - 1] ? match_score : mismatch_score);
-            int delete = score[(i - 1) * (len2 + 1) + j] + gap_penalty;
-            int insert = score[i * (len2 + 1) + (j - 1)] + gap_penalty;
-            int best_score = match > delete ? (match > insert ? match : insert) : (delete > insert ? delete : insert);
-            score[i * (len2 + 1) + j] = best_score > 0 ? best_score : 0;
+void freeSmithWaterman(SmithWaterman* sw) {
+    free(sw->seq1);
+    free(sw->seq2);
+    free(sw);
+}
 
-            if (score[i * (len2 + 1) + j] > max_score) {
-                max_score = score[i * (len2 + 1) + j];
+void alignSmithWaterman(SmithWaterman* sw, char** align1, char** align2, int* gaps, int* score, double* time_taken) {
+    clock_t start = clock();
+    int len_seq1 = strlen(sw->seq1);
+    int len_seq2 = strlen(sw->seq2);
+
+    int** score_matrix = (int**)malloc((len_seq1 + 1) * sizeof(int*));
+    for (int i = 0; i <= len_seq1; ++i) {
+        score_matrix[i] = (int*)malloc((len_seq2 + 1) * sizeof(int));
+        for (int j = 0; j <= len_seq2; ++j) {
+            score_matrix[i][j] = 0;
+        }
+    }
+
+    int max_score = 0;
+    int max_i = 0, max_j = 0;
+    for (int i = 1; i <= len_seq1; ++i) {
+        for (int j = 1; j <= len_seq2; ++j) {
+            int match_score = score_matrix[i - 1][j - 1] + (sw->seq1[i - 1] == sw->seq2[j - 1] ? sw->match : sw->mismatch);
+            int delete_score = score_matrix[i - 1][j] + sw->gap;
+            int insert_score = score_matrix[i][j - 1] + sw->gap;
+            score_matrix[i][j] = MAX(MAX(match_score, delete_score), insert_score);
+            score_matrix[i][j] = MAX(score_matrix[i][j], 0);
+            if (score_matrix[i][j] >= max_score) {
+                max_score = score_matrix[i][j];
                 max_i = i;
                 max_j = j;
             }
         }
     }
 
-    // Recuperação do alinhamento
+    *align1 = (char*)malloc((len_seq1 + len_seq2 + 1) * sizeof(char));
+    *align2 = (char*)malloc((len_seq1 + len_seq2 + 1) * sizeof(char));
+    int idx1 = 0, idx2 = 0;
     int i = max_i, j = max_j;
-    *num_gaps = 0;
-    int alignment_index = 0;
-
-    while (i > 0 && j > 0 && score[i * (len2 + 1) + j] != 0) {
-        if (score[i * (len2 + 1) + j] == score[(i - 1) * (len2 + 1) + (j - 1)] + (seq1[i - 1] == seq2[j - 1] ? match_score : mismatch_score)) {
-            alignment1[alignment_index] = seq1[i - 1];
-            alignment2[alignment_index] = seq2[j - 1];
-            i--;
-            j--;
-        } else if (score[i * (len2 + 1) + j] == score[(i - 1) * (len2 + 1) + j] + gap_penalty) {
-            alignment1[alignment_index] = seq1[i - 1];
-            alignment2[alignment_index] = '-';
-            (*num_gaps)++;
-            i--;
+    while (score_matrix[i][j] != 0) {
+        int current_score = score_matrix[i][j];
+        if (i > 0 && j > 0 && current_score == score_matrix[i - 1][j - 1] + (sw->seq1[i - 1] == sw->seq2[j - 1] ? sw->match : sw->mismatch)) {
+            (*align1)[idx1++] = sw->seq1[i - 1];
+            (*align2)[idx2++] = sw->seq2[j - 1];
+            --i;
+            --j;
+        } else if (i > 0 && current_score == score_matrix[i - 1][j] + sw->gap) {
+            (*align1)[idx1++] = sw->seq1[i - 1];
+            (*align2)[idx2++] = '-';
+            --i;
         } else {
-            alignment1[alignment_index] = '-';
-            alignment2[alignment_index] = seq2[j - 1];
-            (*num_gaps)++;
-            j--;
+            (*align1)[idx1++] = '-';
+            (*align2)[idx2++] = sw->seq2[j - 1];
+            --j;
         }
-        alignment_index++;
+    }
+    (*align1)[idx1] = '\0';
+    (*align2)[idx2] = '\0';
+
+    for (int k = 0; k < idx1 / 2; ++k) {
+        char temp = (*align1)[k];
+        (*align1)[k] = (*align1)[idx1 - k - 1];
+        (*align1)[idx1 - k - 1] = temp;
+    }
+    for (int k = 0; k < idx2 / 2; ++k) {
+        char temp = (*align2)[k];
+        (*align2)[k] = (*align2)[idx2 - k - 1];
+        (*align2)[idx2 - k - 1] = temp;
     }
 
-    alignment1[alignment_index] = '\0';
-    alignment2[alignment_index] = '\0';
-    *alignment_score = max_score;
-    *execution_time = get_time() - start_time;
+    *gaps = 0;
+    for (int k = 0; k < idx1; ++k) {
+        if ((*align1)[k] == '-' || (*align2)[k] == '-') {
+            (*gaps)++;
+        }
+    }
+    *score = max_score;
+    *time_taken = ((double)(clock() - start)) / CLOCKS_PER_SEC;
 
-    free(score);
+    for (int i = 0; i <= len_seq1; ++i) {
+        free(score_matrix[i]);
+    }
+    free(score_matrix);
 }
 
-// Função para iniciar o cliente e conectar ao servidor
-void start_client(const char *host, int port) {
-    int client_socket;
+void client_program() {
+    int client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_socket < 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
     struct sockaddr_in server_addr;
-    char buffer[BUFFER_SIZE];
-    char alignment1[BUFFER_SIZE], alignment2[BUFFER_SIZE];
-    int alignment_score, num_gaps;
-    double execution_time;
-
-    const char *seq2 = "LKDDAWFCNWISVQGPGAGDEVRFPCYRWVEGNGVLSLPEGTGRTVGEDPQGLFQKHREEELEERRKLYR";
-    const char *macaco[] = {
-        "CCCAGCAGTTGAGGATATTGGGCACAGCTGCATGTAAGGTGGTGTCACCTTGTTGAGCACATGGTAGTCCATGTTCATTCTCCAGGAGCCATCAGGCTTCTTTGCAGGCCACACAGGGCTGTTGTGGGGGCTGTGGGAGGCCTATTTGTACTTCATGTAATTCCTGAATTGTTTGGGTAGTTTCAGAGTGTCCCCCAGCAGGAGTATTGCCTCACATTCACTGTCTGCCTGGGCTGGGGCAAGTGTACAGCCACCCATGTGGCCCATCCTCTTTTTGTTCCTTGATTACTTTCTGGACTTGGTCCTTGCTTTTATCCAGCTCACTGAGGTCTGCCAAAGATTCCAGACACATTATAACCCTTCTTAAATTGGAAATGACCCAGACATTCCATGAGTACCTGAAATAATTTTAAGATTTTAAGCTATATAATCAGACAAGAGAAAGAAATAAAGGGCGACCAAATCAGAAAAGGGGAAGTCAAACTGTCATTATGATTATATACCTAAAAAATCCTATAGACTCATCCAAAAAGCTCCTAGAACTGCAAA",
-        "TGTGACTTGTACCCTAGAGTTGTCCTGCCTTGGAGTAAAGAGGCTGGCCTTTTGTACCCTTGTATTAGTCAATTATTGGCTACATGACACCAATGTATCCAACTGGTGCAGAGGGGATGGTGCACCCTCTCCAGGATTTCCAGGTAAGGCAACTCCTGTCAGTGGAGGGCAGTGTTAGCTGTGGGGTGCTGCTGTGTTAGCAGCAAACATTCACCACGGCAGGGGGCTGGACTTACCAATGTACATTACCAGTTTAATATACATTTAATGTACAACACCAGTTTAATGCACATTTAATGTACCATCAAGGAGGTTGGATGCATTGACTTTTCAAAGGGGATCTGAGTGGGGCACCAATGGCATCTACTACGTGAGAGACAGAGCTTTATCCTACTGGGAAAGTGGGGGAGGCAATCTAGAATTCACACTTCAATGTGATCTCAATTTGAGGGATGAGGGAGCTGGGCTATTTACCCACCAACTCCTGGCAGCCCTTACTGAAGGAGACTCCTGGGGAGGTTAATTCTCAGTGTGGCCTGTGTGTAGCCACAGAGAGCTCCAGCAGCCGACAGTCATGT",
-        "GCTGGGGCCCGGTCTTGGACTCACATGAATGAAGTAGTTGGCATAGGAGTCCTCCTTGGTAACAAAGTGGTACAGGTCAGCCAAGTACTCGTCCTTGGGGACAGAGAGGGGAGAGCTTACGTTGGGTGAGGCTGGGGGGTCTAGAGGGGAAGAGGAGGCTTGGAAGGGCTGGTGACCTCCCCCAGGCCACACAACTGCAGGTGGGAGGTCCCAGCCAGGCTCCTCTCTCTGCCAAGGTTGGTGCTTGGGGCCAGCCCCTGGGAACTCCCTTAAACTTTTCTGGCTTCTTGTCCCCATCTCTGTGTCTCCACAGACTTAGCACAGTGCCTTGTTTTTTGTTTTGTTTCGTTTGAGACGGAGTCTCGCACTGTTGCCCGGGCTGGAGTGCAGTGGTGCAATCTCGGCTCACTGCAACCTCTGCCTCCTGGGTTCAAGCGATTCTCCTGCCTCAGCCTCCTGAGTAGCTGGGATTACAGGCGCGTGCCACTACGCCCAGCTAAGTTTTTGTATTTTTAGTAGAGACAGGGTTTCACCATGTTGGC",
-        "CTCTGAAATACAAGACCTTTAGGGATCACTTAGCCCAACAGCCTCAATGGATAGAGATAACTGAGGCCCAGAGCAGGCATTTGTTCAAGTTCAGAGAAGAAGAACGTTAACGCCTCTGTGTGACCTGGCATCAGGCGGGGCTAGACTATCACCTCCAAGTCAGGCTGCCTGAGGTCATACTGGCAGGGATGGCCCAACCACTGGATCAGGAACCCACCAGAGCATGCCTAAGTCTTGTCACTAAATCTCTATGCCCAGCCATTGAGACAAAGAATCTTACAGATCCCATACAAGACTCTACTGTGACCCCACCAGAGCCTTGCATTGTTGGGCACACCTGCCCCAACACTCCCAGCCAGCATCATGACTTCTAGGATGGATTCAGATGGCCACACCCAGATATCACTCCACTCCCCTTTTAGCTTCCATGAGAGATTTAGCTTCTGTGAAAGCAGGGATGTCAGGACCCAAGGGGCAGGTCTGTGGACAAACTGACTCACCTCATACTGTAGCTTCTGTTTCCCTGCAGGCATGCCTGTGGCTTCATGAATCTTCACCTTAATGACAGAGACCTGTGGGATCAAGCAGC",
-        "ATACAGGGTCTTGCTCTGTTGACCAGACCGTGACCTCCTGGGTTCAAGCGAGGACTCAGCCTCCTGAGTAGCCGGGACTACAGATTGGACGACTGATTATTGGACAGAATGGCATCTTGTCTACACCTGCGGTCTCCTGCATTATCAGGAAGATCAAGGCAGCTGGTGGAATCATTCTAACAGCCAGCCACTGCCCTGGAGGACCAGGGGGAGAGTTTGGAGTGAAGTTTAATGTTGCCAATGGAGGGCAGACTTCTTGGAGGAAGTGAAATTTGAACTGCGATGTGAAGAATGAGCAGGAGTTAGTGAGGTGAAGATGAGAGAAGGAGTGTTGCAAACACAGGTCAGTCTGTGCAAAGGCCCTGA"
-    };
-
-    const char *gorila[] = {
-        "TACCAGTTTAAGGGCCTGTGCTACTTCACCAACGGGACGGAGCGCGTGCGGGCTGTGACCAGACACATCTATAACCGAGAGGAGTACGTGCGCTTCGACAGCGACGTGGGGGTGTACCGGGCAGTGACGCCGCAGGGGCGGCCTGCCGCCGACTACTGGAACAGCCAGAAGGAAGCCTGGAGGAGACCCGGGCGTCGGTGGACAGGGTGTGCAGACACAACTACGAGGTGTCGTACCGCGGGATC",
-        "TACCAGTTTAAGGGCATGTGCTACTTCACCAACGGGACGGAGCGCGTGCGTGTTGTGACGAGATACATCTATAACCGAGAGGAGTACGCGCGCTTCGACAGCGACGTGGGGGTGTATCAGGCGGTGACGCCGCTGGGGCCGCCTGACGCCGACTACTGGAACAGCCAGAAGGAAGCCTGGAGGAGACCCGGGCGTCGGTGGACAGGGTGTGCAGACACAACTACCAGTTGGAGCTCCTCACGACC",
-        "CCAAGTATTAGCTAACCCATCAATAATTATCATGTATGTCGTGCATTACTGCCAGACACCATGAATAATGCACAGTACTACAAATGTCCAACCACCTGTAACACATACAACCCCCCCCCTCACTGCTCCACCCAACGGAATACCAACCAATCCATCCCTCACAAAAAGTACATAAACATAAAGTCATTTATCGTACATAGCACATTCCAGTTAAATCATCCTCGCCCCCACGGATGCCCCCCCTCAGATA",
-        "ATGGCGGTTTTGTGGAATAGAAAAGGGGGCAAGGTGGGGAAAAGATTGAGAAATCGGAAGGTTGCTGTGTCTGTGTAGAAAGAAGTAGACATGGGAGACTTTTCATTTTGTTCTGTACTAAGAAAAATTCTTCTGCCTTGGGATCCTGTTGATCTATGACCTTACCCCCAACCCTGTGCTCTCTGAAACATGTGTTGTGTCCACTCAGGGTTAAATGGATTAAGGGCGGTGCAAGATGTGCTTTGTTAAACAGATGCTTGAAGGCAGCATGCTCGTTAAGAGTCATCACCACTCCCTAATCTCAAGTACCCAGGGACACAAACACTGCGGAAGGCTGCAGGGTCCTCTGCCTAGGAAAACCAGAGACCTTTGTTCACTTGTTTATCTGCTGACCTTCCCTCCACTACTGTCCTATGACCCTGCCACATCCCCCTCTGCG",
-        "ATGGCGGTTTTGTGGAATAGAAAAGGGGGCAAGGTGGGGAAAAGATTGAGAAATCGGAAGGTTGCTGTGTCTGTGTAGAAAGAAGTAGATATGGGAGACTTTTCATTTTGTTCTGTACTAAGAAAAATTCTTCTGCCTTGGGATCCTGTTGATCTATGACCTTACCCCCAACCCTGTGCTCTCTGAAACATGTGCTGTGTCCACTCAGGGTTAAATGGATTAAGGGCGGTGCAAGATGTGCTTTGTTAAACAGATGCTTGAAGGCAGCATGCTCCTTAAGAGTCATCACCACTCCCTAATCTCAAGTACCCATGGACACAAACACTCTGCCTAGGAAAACCAGAGACCTTTGTTCACTTGTTTGTCTGCTGACCTTCCCTCCACTACTGTCCTATGACCCTGCCAAATCCCCCTCTGCG"
-    };
-
-    // Criar socket
-    client_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (client_socket == -1) {
-        perror("Could not create socket");
-        exit(EXIT_FAILURE);
-    }
-
-    server_addr.sin_addr.s_addr = inet_addr(host);
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
+    server_addr.sin_port = htons(9999);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    // Conectar ao servidor
-    if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connect failed");
+    if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection failed");
         close(client_socket);
         exit(EXIT_FAILURE);
     }
 
-    // Receber a sequência do servidor
-    if (recv(client_socket, buffer, BUFFER_SIZE, 0) < 0) {
-        perror("Recv failed");
+    char buffer[BUFFER_SIZE] = {0};
+    int bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
+    if (bytes_received < 0) {
+        perror("Receive failed");
         close(client_socket);
         exit(EXIT_FAILURE);
     }
-    printf("Sequence received from server: %s\n", buffer);
 
-    // Executa o algoritmo de Needleman-Wunsch e Smith-Waterman para sequências de macaco
-    needleman_wunsch(macaco[0], seq2, strlen(macaco[0]), strlen(seq2), 1, -1, -1, alignment1, alignment2, &alignment_score, &num_gaps, &execution_time);
-    printf("Needleman-Wunsch:\nAlignment1: %s\nAlignment2: %s\nScore: %d\nGaps: %d\nExecution Time: %lf seconds\n", alignment1, alignment2, alignment_score, num_gaps, execution_time);
+    buffer[bytes_received] = '\0';
+    char* token = strtok(buffer, ";");
+    char* seq1 = strdup(token + 6); // Skip "seq1:"
+    token = strtok(NULL, ";");
+    char* seq2 = strdup(token + 6); // Skip "seq2:"
 
-    smith_waterman(macaco[0], seq2, strlen(macaco[0]), strlen(seq2), 1, -1, -1, alignment1, alignment2, &alignment_score, &num_gaps, &execution_time);
-    printf("Smith-Waterman:\nAlignment1: %s\nAlignment2: %s\nScore: %d\nGaps: %d\nExecution Time: %lf seconds\n", alignment1, alignment2, alignment_score, num_gaps, execution_time);
+    char* nw_align1;
+    char* nw_align2;
+    int nw_gaps;
+    int nw_score;
+    double nw_time;
+    NeedlemanWunsch* nw = createNeedlemanWunsch(seq1, seq2, 1, -1, -1);
+    alignNeedlemanWunsch(nw, &nw_align1, &nw_align2, &nw_gaps, &nw_score, &nw_time);
+    freeNeedlemanWunsch(nw);
 
-    // Enviar o melhor resultado para o servidor
-    char response_message[BUFFER_SIZE];
-    snprintf(response_message, BUFFER_SIZE, "C;Needleman;AlignmentScore:%d;Gap:%d;ExecutionTime:%lf;Smith;AlignmentScore:%d;Gap:%d;ExecutionTime:%lf",
-             alignment_score, num_gaps, execution_time, alignment_score, num_gaps, execution_time);
+    char* sw_align1;
+    char* sw_align2;
+    int sw_gaps;
+    int sw_score;
+    double sw_time;
+    SmithWaterman* sw = createSmithWaterman(seq1, seq2, 1, -1, -1);
+    alignSmithWaterman(sw, &sw_align1, &sw_align2, &sw_gaps, &sw_score, &sw_time);
+    freeSmithWaterman(sw);
 
-    if (send(client_socket, response_message, strlen(response_message), 0) < 0) {
-        perror("Send failed");
-        close(client_socket);
-        exit(EXIT_FAILURE);
-    }
-    printf("Response sent to server\n");
+    char result[BUFFER_SIZE];
+    snprintf(result, BUFFER_SIZE, "C;Needleman;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f;Smith;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f",
+             nw_align1, nw_align2, nw_score, nw_gaps, nw_time, sw_align1, sw_align2, sw_score, sw_gaps, sw_time);
 
+    send(client_socket, result, strlen(result), 0);
     close(client_socket);
+
+    free(nw_align1);
+    free(nw_align2);
+    free(sw_align1);
+    free(sw_align2);
+    free(seq1);
+    free(seq2);
 }
 
 int main() {
-    start_client("127.0.0.1", 65432);
+    client_program();
     return 0;
 }

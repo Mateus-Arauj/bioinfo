@@ -1,236 +1,202 @@
 using System;
-using System.IO;
+using System.Net.Sockets;
+using System.Text;
 
-class AlignmentAlgorithms
+class NeedlemanWunsch
 {
-    // Parâmetros de alinhamento
-    const int MATCH = 2;
-    const int MISMATCH = -1;
-    const int GAP = -1;
+    public string Seq1 { get; }
+    public string Seq2 { get; }
+    public int Match { get; }
+    public int Mismatch { get; }
+    public int Gap { get; }
 
-    static int Max(int a, int b, int c)
+    public NeedlemanWunsch(string seq1, string seq2, int match, int mismatch, int gap)
     {
-        return Math.Max(Math.Max(a, b), c);
+        Seq1 = seq1;
+        Seq2 = seq2;
+        Match = match;
+        Mismatch = mismatch;
+        Gap = gap;
     }
 
-    static int Max(int a, int b, int c, int d)
+    public void Align(out string align1, out string align2, out int gaps, out int score, out double timeTaken)
     {
-        return Math.Max(Math.Max(a, b), Math.Max(c, d));
-    }
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        int lenSeq1 = Seq1.Length;
+        int lenSeq2 = Seq2.Length;
 
-    static void SmithWaterman(string seq1, string seq2, out string alignedSeq1, out string alignedSeq2, out int maxScore, out int gapCount1, out int gapCount2)
-    {
-        int len1 = seq1.Length;
-        int len2 = seq2.Length;
+        int[,] scoreMatrix = new int[lenSeq1 + 1, lenSeq2 + 1];
 
-        // Matrizes de pontuação e direção
-        int[,] score = new int[len1 + 1, len2 + 1];
-        char[,] direction = new char[len1 + 1, len2 + 1];
+        for (int i = 0; i <= lenSeq1; ++i)
+            scoreMatrix[i, 0] = Gap * i;
+        for (int j = 0; j <= lenSeq2; ++j)
+            scoreMatrix[0, j] = Gap * j;
 
-        // Inicialização das matrizes
-        int maxI = 0, maxJ = 0;
-        maxScore = 0;
-
-        for (int i = 0; i <= len1; i++)
+        for (int i = 1; i <= lenSeq1; ++i)
         {
-            for (int j = 0; j <= len2; j++)
+            for (int j = 1; j <= lenSeq2; ++j)
             {
-                score[i, j] = 0;
-                direction[i, j] = '0';
+                int matchScore = scoreMatrix[i - 1, j - 1] + (Seq1[i - 1] == Seq2[j - 1] ? Match : Mismatch);
+                int deleteScore = scoreMatrix[i - 1, j] + Gap;
+                int insertScore = scoreMatrix[i, j - 1] + Gap;
+                scoreMatrix[i, j] = Math.Max(Math.Max(matchScore, deleteScore), insertScore);
             }
         }
 
-        // Preenchimento da matriz de pontuação e matriz de direção
-        for (int i = 1; i <= len1; i++)
+        var align1Builder = new StringBuilder();
+        var align2Builder = new StringBuilder();
+        int idx1 = lenSeq1, idx2 = lenSeq2;
+
+        while (idx1 > 0 || idx2 > 0)
         {
-            for (int j = 1; j <= len2; j++)
+            if (idx1 > 0 && idx2 > 0 && scoreMatrix[idx1, idx2] == scoreMatrix[idx1 - 1, idx2 - 1] + (Seq1[idx1 - 1] == Seq2[idx2 - 1] ? Match : Mismatch))
             {
-                int scoreDiagonal = score[i - 1, j - 1] + (seq1[i - 1] == seq2[j - 1] ? MATCH : MISMATCH);
-                int scoreUp = score[i - 1, j] + GAP;
-                int scoreLeft = score[i, j - 1] + GAP;
+                align1Builder.Insert(0, Seq1[idx1 - 1]);
+                align2Builder.Insert(0, Seq2[idx2 - 1]);
+                --idx1;
+                --idx2;
+            }
+            else if (idx1 > 0 && scoreMatrix[idx1, idx2] == scoreMatrix[idx1 - 1, idx2] + Gap)
+            {
+                align1Builder.Insert(0, Seq1[idx1 - 1]);
+                align2Builder.Insert(0, '-');
+                --idx1;
+            }
+            else
+            {
+                align1Builder.Insert(0, '-');
+                align2Builder.Insert(0, Seq2[idx2 - 1]);
+                --idx2;
+            }
+        }
 
-                score[i, j] = Max(0, scoreDiagonal, scoreUp, scoreLeft);
+        align1 = align1Builder.ToString();
+        align2 = align2Builder.ToString();
 
-                if (score[i, j] == scoreDiagonal)
-                {
-                    direction[i, j] = 'D';
-                }
-                else if (score[i, j] == scoreUp)
-                {
-                    direction[i, j] = 'U';
-                }
-                else if (score[i, j] == scoreLeft)
-                {
-                    direction[i, j] = 'L';
-                }
+        gaps = 0;
+        for (int k = 0; k < align1.Length; ++k)
+        {
+            if (align1[k] == '-' || align2[k] == '-')
+                ++gaps;
+        }
+        score = scoreMatrix[lenSeq1, lenSeq2];
+        watch.Stop();
+        timeTaken = watch.Elapsed.TotalSeconds;
+    }
+}
 
-                if (score[i, j] >= maxScore)
+class SmithWaterman
+{
+    public string Seq1 { get; }
+    public string Seq2 { get; }
+    public int Match { get; }
+    public int Mismatch { get; }
+    public int Gap { get; }
+
+    public SmithWaterman(string seq1, string seq2, int match, int mismatch, int gap)
+    {
+        Seq1 = seq1;
+        Seq2 = seq2;
+        Match = match;
+        Mismatch = mismatch;
+        Gap = gap;
+    }
+
+    public void Align(out string align1, out string align2, out int gaps, out int score, out double timeTaken)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        int lenSeq1 = Seq1.Length;
+        int lenSeq2 = Seq2.Length;
+
+        int[,] scoreMatrix = new int[lenSeq1 + 1, lenSeq2 + 1];
+        int maxScore = 0, maxI = 0, maxJ = 0;
+
+        for (int i = 1; i <= lenSeq1; ++i)
+        {
+            for (int j = 1; j <= lenSeq2; ++j)
+            {
+                int matchScore = scoreMatrix[i - 1, j - 1] + (Seq1[i - 1] == Seq2[j - 1] ? Match : Mismatch);
+                int deleteScore = scoreMatrix[i - 1, j] + Gap;
+                int insertScore = scoreMatrix[i, j - 1] + Gap;
+                scoreMatrix[i, j] = Math.Max(0, Math.Max(Math.Max(matchScore, deleteScore), insertScore));
+                if (scoreMatrix[i, j] > maxScore)
                 {
+                    maxScore = scoreMatrix[i, j];
                     maxI = i;
                     maxJ = j;
-                    maxScore = score[i, j];
                 }
             }
         }
 
-        // Alinhamento a partir do ponto de maior pontuação
-        alignedSeq1 = "";
-        alignedSeq2 = "";
-        gapCount1 = 0;
-        gapCount2 = 0;
+        var align1Builder = new StringBuilder();
+        var align2Builder = new StringBuilder();
+        int idx1 = maxI, idx2 = maxJ;
 
-        int iMax = maxI;
-        int jMax = maxJ;
-
-        while (score[iMax, jMax] > 0)
+        while (scoreMatrix[idx1, idx2] != 0)
         {
-            if (direction[iMax, jMax] == 'D')
+            if (idx1 > 0 && idx2 > 0 && scoreMatrix[idx1, idx2] == scoreMatrix[idx1 - 1, idx2 - 1] + (Seq1[idx1 - 1] == Seq2[idx2 - 1] ? Match : Mismatch))
             {
-                alignedSeq1 = seq1[iMax - 1] + alignedSeq1;
-                alignedSeq2 = seq2[jMax - 1] + alignedSeq2;
-                iMax--;
-                jMax--;
+                align1Builder.Insert(0, Seq1[idx1 - 1]);
+                align2Builder.Insert(0, Seq2[idx2 - 1]);
+                --idx1;
+                --idx2;
             }
-            else if (direction[iMax, jMax] == 'U')
+            else if (idx1 > 0 && scoreMatrix[idx1, idx2] == scoreMatrix[idx1 - 1, idx2] + Gap)
             {
-                alignedSeq1 = seq1[iMax - 1] + alignedSeq1;
-                alignedSeq2 = "-" + alignedSeq2;
-                gapCount2++;
-                iMax--;
+                align1Builder.Insert(0, Seq1[idx1 - 1]);
+                align2Builder.Insert(0, '-');
+                --idx1;
             }
-            else if (direction[iMax, jMax] == 'L')
+            else
             {
-                alignedSeq1 = "-" + alignedSeq1;
-                alignedSeq2 = seq2[jMax - 1] + alignedSeq2;
-                gapCount1++;
-                jMax--;
+                align1Builder.Insert(0, '-');
+                align2Builder.Insert(0, Seq2[idx2 - 1]);
+                --idx2;
             }
         }
+
+        align1 = align1Builder.ToString();
+        align2 = align2Builder.ToString();
+
+        gaps = 0;
+        for (int k = 0; k < align1.Length; ++k)
+        {
+            if (align1[k] == '-' || align2[k] == '-')
+                ++gaps;
+        }
+        score = maxScore;
+        watch.Stop();
+        timeTaken = watch.Elapsed.TotalSeconds;
     }
+}
 
-    static void NeedlemanWunsch(string seq1, string seq2, out string alignedSeq1, out string alignedSeq2, out int finalScore, out int gapCount1, out int gapCount2)
+class Program
+{
+    static void Main()
     {
-        int len1 = seq1.Length;
-        int len2 = seq2.Length;
+        string server = "127.0.0.1";
+        int port = 9999;
 
-        // Matrizes de pontuação e direção
-        int[,] score = new int[len1 + 1, len2 + 1];
-        char[,] direction = new char[len1 + 1, len2 + 1];
-
-        // Inicialização das matrizes
-        for (int m = 0; m <= len1; m++)
+        using (var client = new TcpClient(server, port))
+        using (var stream = client.GetStream())
         {
-            score[m, 0] = m * GAP;
-            direction[m, 0] = 'U';
+            byte[] buffer = new byte[4096];
+            int bytesRead = stream.Read(buffer, 0, buffer.Length);
+            string data = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+
+            string[] tokens = data.Split(';');
+            string seq1 = tokens[0].Substring(6); // Skip "seq1:"
+            string seq2 = tokens[1].Substring(6); // Skip "seq2:"
+
+            NeedlemanWunsch nw = new NeedlemanWunsch(seq1, seq2, 1, -1, -1);
+            nw.Align(out string nwAlign1, out string nwAlign2, out int nwGaps, out int nwScore, out double nwTime);
+
+            SmithWaterman sw = new SmithWaterman(seq1, seq2, 1, -1, -1);
+            sw.Align(out string swAlign1, out string swAlign2, out int swGaps, out int swScore, out double swTime);
+
+            string result = $"C;Needleman;Alignment1:{nwAlign1};Alignment2:{nwAlign2};AlignmentScore:{nwScore};Gap:{nwGaps};ExecutionTime:{nwTime:F4};Smith;Alignment1:{swAlign1};Alignment2:{swAlign2};AlignmentScore:{swScore};Gap:{swGaps};ExecutionTime:{swTime:F4}";
+            byte[] resultBytes = Encoding.ASCII.GetBytes(result);
+            stream.Write(resultBytes, 0, resultBytes.Length);
         }
-
-        for (int n = 0; n <= len2; n++)
-        {
-            score[0, n] = n * GAP;
-            direction[0, n] = 'L';
-        }
-
-        // Preenchimento da matriz de pontuação e matriz de direção
-        for (int m = 1; m <= len1; m++)
-        {
-            for (int n = 1; n <= len2; n++)
-            {
-                int scoreDiagonal = score[m - 1, n - 1] + (seq1[m - 1] == seq2[n - 1] ? MATCH : MISMATCH);
-                int scoreUp = score[m - 1, n] + GAP;
-                int scoreLeft = score[m, n - 1] + GAP;
-
-                score[m, n] = Max(scoreDiagonal, scoreUp, scoreLeft);
-
-                if (score[m, n] == scoreDiagonal)
-                {
-                    direction[m, n] = 'D';
-                }
-                else if (score[m, n] == scoreUp)
-                {
-                    direction[m, n] = 'U';
-                }
-                else if (score[m, n] == scoreLeft)
-                {
-                    direction[m, n] = 'L';
-                }
-            }
-        }
-
-        // Pontuação final
-        finalScore = score[len1, len2];
-
-        // Alinhamento a partir do ponto final
-        alignedSeq1 = "";
-        alignedSeq2 = "";
-        gapCount1 = 0;
-        gapCount2 = 0;
-
-        int mIndex = len1;
-        int nIndex = len2;
-
-        while (mIndex > 0 || nIndex > 0)
-        {
-            if (direction[mIndex, nIndex] == 'D')
-            {
-                alignedSeq1 = seq1[mIndex - 1] + alignedSeq1;
-                alignedSeq2 = seq2[nIndex - 1] + alignedSeq2;
-                mIndex--;
-                nIndex--;
-            }
-            else if (direction[mIndex, nIndex] == 'U')
-            {
-                alignedSeq1 = seq1[mIndex - 1] + alignedSeq1;
-                alignedSeq2 = "-" + alignedSeq2;
-                gapCount2++;
-                mIndex--;
-            }
-            else if (direction[mIndex, nIndex] == 'L')
-            {
-                alignedSeq1 = "-" + alignedSeq1;
-                alignedSeq2 = seq2[nIndex - 1] + alignedSeq2;
-                gapCount1++;
-                nIndex--;
-            }
-        }
-    }
-
-    static void Main(string[] args)
-    {
-        string seq1 = "MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKT"; 
-        string seq2 = "MIPGTKLVIAFTSDLKDFSPLEYGEKHCRYLIDGRSYQMHLKHATVKKIVKAPGPLFHTGSGSTSSFRVGVVDFMIQGGDF"; 
-
-        // Smith-Waterman
-        SmithWaterman(seq1, seq2, out string swAlignedSeq1, out string swAlignedSeq2, out int swMaxScore, out int swGapCount1, out int swGapCount2);
-
-        // Needleman-Wunsch
-        NeedlemanWunsch(seq1, seq2, out string nwAlignedSeq1, out string nwAlignedSeq2, out int nwFinalScore, out int nwGapCount1, out int nwGapCount2);
-
-        // Comparação dos resultados
-        string melhorAlgoritmo = swMaxScore > nwFinalScore ? "Smith-Waterman" : "Needleman-Wunsch";
-
-        // Impressão do resultado
-        using (StreamWriter sw = new StreamWriter("alinhamento.txt"))
-        {
-            sw.WriteLine($"Seq1: {seq1}");
-            sw.WriteLine($"Seq2: {seq2}");
-
-            sw.WriteLine("\nSmith-Waterman Alinhamento Local:");
-            sw.WriteLine(swAlignedSeq1);
-            sw.WriteLine(swAlignedSeq2);
-            sw.WriteLine($"Pontuação (Score) do Alinhamento: {swMaxScore}");
-            sw.WriteLine($"Número de Gaps em Seq1: {swGapCount1}");
-            sw.WriteLine($"Número de Gaps em Seq2: {swGapCount2}");
-
-            sw.WriteLine("\nNeedleman-Wunsch Alinhamento Global:");
-            sw.WriteLine(nwAlignedSeq1);
-            sw.WriteLine(nwAlignedSeq2);
-            sw.WriteLine($"Pontuação (Score) do Alinhamento: {nwFinalScore}");
-            sw.WriteLine($"Número de Gaps em Seq1: {nwGapCount1}");
-            sw.WriteLine($"Número de Gaps em Seq2: {nwGapCount2}");
-
-            sw.WriteLine($"\nMelhor algoritmo: {melhorAlgoritmo}");
-        }
-
-        Console.WriteLine("Alinhamento salvo no arquivo 'alinhamento.txt'.");
     }
 }

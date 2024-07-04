@@ -1,146 +1,99 @@
-import time
 import socket
+import numpy as np
+import time
 
-def needleman_wunsch(seq1, seq2, match_score=1, mismatch_score=-1, gap_penalty=-1):
-    len1 = len(seq1)
-    len2 = len(seq2)
-
-    # Inicialização da matriz de pontuações
-    score = [[0 for _ in range(len2 + 1)] for _ in range(len1 + 1)]
-
-    # Inicialização das penalidades para gaps
-    for i in range(1, len1 + 1):
-        score[i][0] = gap_penalty * i
-    for j in range(1, len2 + 1):
-        score[0][j] = gap_penalty * j
-
-    # Preenchimento da matriz de pontuações
-    for i in range(1, len1 + 1):
-        for j in range(1, len2 + 1):
-            match = score[i-1][j-1] + (match_score if seq1[i-1] == seq2[j-1] else mismatch_score)
-            delete = score[i-1][j] + gap_penalty
-            insert = score[i][j-1] + gap_penalty
-            score[i][j] = max(match, delete, insert)
-
-    # Recuperação do alinhamento
-    alignment1 = ''
-    alignment2 = ''
-    num_gaps = 0
-    i, j = len1, len2
+def needleman_wunsch(seq1, seq2, match=1, mismatch=-1, gap=-1):
+    start_time = time.time()
+    len_seq1 = len(seq1)
+    len_seq2 = len(seq2)
+    score_matrix = np.zeros((len_seq1 + 1, len_seq2 + 1), dtype=int)
+    for i in range(len_seq1 + 1):
+        score_matrix[i][0] = gap * i
+    for j in range(len_seq2 + 1):
+        score_matrix[0][j] = gap * j
+    for i in range(1, len_seq1 + 1):
+        for j in range(1, len_seq2 + 1):
+            match_score = score_matrix[i - 1][j - 1] + (match if seq1[i - 1] == seq2[j - 1] else mismatch)
+            delete = score_matrix[i - 1][j] + gap
+            insert = score_matrix[i][j - 1] + gap
+            score_matrix[i][j] = max(match_score, delete, insert)
+    align1, align2 = '', ''
+    i, j = len_seq1, len_seq2
     while i > 0 or j > 0:
-        if i > 0 and j > 0 and score[i][j] == score[i-1][j-1] + (match_score if seq1[i-1] == seq2[j-1] else mismatch_score):
-            alignment1 = seq1[i-1] + alignment1
-            alignment2 = seq2[j-1] + alignment2
+        current_score = score_matrix[i][j]
+        if i > 0 and j > 0 and current_score == score_matrix[i - 1][j - 1] + (match if seq1[i - 1] == seq2[j - 1] else mismatch):
+            align1 += seq1[i - 1]
+            align2 += seq2[j - 1]
             i -= 1
             j -= 1
-        elif i > 0 and score[i][j] == score[i-1][j] + gap_penalty:
-            alignment1 = seq1[i-1] + alignment1
-            alignment2 = '-' + alignment2
-            num_gaps += 1
+        elif i > 0 and current_score == score_matrix[i - 1][j] + gap:
+            align1 += seq1[i - 1]
+            align2 += '-'
             i -= 1
         else:
-            alignment1 = '-' + alignment1
-            alignment2 = seq2[j-1] + alignment2
-            num_gaps += 1
+            align1 += '-'
+            align2 += seq2[j - 1]
             j -= 1
+    align1 = align1[::-1]
+    align2 = align2[::-1]
+    gaps = align1.count('-') + align2.count('-')
+    score = score_matrix[len_seq1][len_seq2]
+    time_taken = time.time() - start_time
+    return align1, align2, gaps, score, time_taken
 
-    return alignment1, alignment2, score[len1][len2], num_gaps
-
-def smith_waterman(seq1, seq2, match_score=1, mismatch_score=-1, gap_penalty=-1):
-    len1 = len(seq1)
-    len2 = len(seq2)
-
-    # Inicialização da matriz de pontuações e da matriz de trilhas
-    score = [[0 for _ in range(len2 + 1)] for _ in range(len1 + 1)]
-    traceback = [[[] for _ in range(len2 + 1)] for _ in range(len1 + 1)]
+def smith_waterman(seq1, seq2, match=1, mismatch=-1, gap=-1):
+    start_time = time.time()
+    len_seq1 = len(seq1)
+    len_seq2 = len(seq2)
+    score_matrix = np.zeros((len_seq1 + 1, len_seq2 + 1), dtype=int)
     max_score = 0
-    max_positions = []
+    max_pos = None
+    for i in range(1, len_seq1 + 1):
+        for j in range(1, len_seq2 + 1):
+            match_score = score_matrix[i - 1][j - 1] + (match if seq1[i - 1] == seq2[j - 1] else mismatch)
+            delete = score_matrix[i - 1][j] + gap
+            insert = score_matrix[i][j - 1] + gap
+            score_matrix[i][j] = max(0, match_score, delete, insert)
+            if score_matrix[i][j] >= max_score:
+                max_score = score_matrix[i][j]
+                max_pos = (i, j)
+    align1, align2 = '', ''
+    i, j = max_pos
+    while score_matrix[i][j] != 0:
+        current_score = score_matrix[i][j]
+        if i > 0 and j > 0 and current_score == score_matrix[i - 1][j - 1] + (match if seq1[i - 1] == seq2[j - 1] else mismatch):
+            align1 += seq1[i - 1]
+            align2 += seq2[j - 1]
+            i -= 1
+            j -= 1
+        elif i > 0 and current_score == score_matrix[i - 1][j] + gap:
+            align1 += seq1[i - 1]
+            align2 += '-'
+            i -= 1
+        else:
+            align1 += '-'
+            align2 += seq2[j - 1]
+            j -= 1
+    align1 = align1[::-1]
+    align2 = align2[::-1]
+    gaps = align1.count('-') + align2.count('-')
+    score = max_score
+    time_taken = time.time() - start_time
+    return align1, align2, gaps, score, time_taken
 
-    # Preenchimento da matriz de pontuações
-    for i in range(1, len1 + 1):
-        for j in range(1, len2 + 1):
-            match = score[i-1][j-1] + (match_score if seq1[i-1] == seq2[j-1] else mismatch_score)
-            delete = score[i-1][j] + gap_penalty
-            insert = score[i][j-1] + gap_penalty
-            best_score = max(match, delete, insert, 0)
-            score[i][j] = best_score
+def client_program():
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(("127.0.0.1", 65432))
+    message = client_socket.recv(4096).decode()
+    seq1 = message.split(";")[0]
+    seq2 = message.split(";")[1]
+    print(seq1, seq2)
+    nw_align1, nw_align2, nw_gaps, nw_score, nw_time = needleman_wunsch(seq1, seq2)
+    sw_align1, sw_align2, sw_gaps, sw_score, sw_time = smith_waterman(seq1, seq2)
+    result = f"Python;Needleman;Alignment1:{nw_align1};Alignment2:{nw_align2};AlignmentScore:{nw_score};Gap:{nw_gaps};ExecutionTime:{nw_time:.4f};Smith;Alignment1:{sw_align1};Alignment2:{sw_align2};AlignmentScore:{sw_score};Gap:{sw_gaps};ExecutionTime:{sw_time:.4f}"
+    print(result)
+    client_socket.send(result.encode())
+    client_socket.close()
 
-            # Rastreando os caminhos que levam ao melhor score
-            if best_score == 0:
-                continue
-            if best_score == match:
-                traceback[i][j].append((i-1, j-1))
-            if best_score == delete:
-                traceback[i][j].append((i-1, j))
-            if best_score == insert:
-                traceback[i][j].append((i, j-1))
-
-            if best_score > max_score:
-                max_score = best_score
-                max_positions = [(i, j)]
-            elif best_score == max_score:
-                max_positions.append((i, j))
-
-    # Função para traçar os caminhos de volta para encontrar todos os alinhamentos possíveis
-    def traceback_alignments(i, j):
-        if score[i][j] == 0:
-            return [("", "", 0)]
-        alignments = []
-        for prev_i, prev_j in traceback[i][j]:
-            for align1, align2, gaps in traceback_alignments(prev_i, prev_j):
-                if prev_i == i - 1 and prev_j == j - 1:
-                    alignments.append((seq1[i-1] + align1, seq2[i-1] + align2, gaps))
-                elif prev_i == i - 1:
-                    alignments.append((seq1[i-1] + align1, "-" + align2, gaps + 1))
-                elif prev_j == j - 1:
-                    alignments.append(("-" + align1, seq2[i-1] + align2, gaps + 1))
-        return alignments
-
-    all_alignments1 = []
-    all_alignments2 = []
-    num_gaps_list = []
-    for max_pos in max_positions:
-        alignments = traceback_alignments(max_pos[0], max_pos[1])
-        for align1, align2, gaps in alignments:
-            all_alignments1.append(align1)
-            all_alignments2.append(align2)
-            num_gaps_list.append(gaps)
-
-    return all_alignments1, all_alignments2, max_score, num_gaps_list
-
-def start_client(host='127.0.0.1', port=65431):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.connect((host, port))
-
-        while True:
-            # Receber a sequência do servidor
-            sequence = client_socket.recv(1024).decode()
-            if not sequence:
-                print("No sequence received, closing connection.")
-                break
-            print("Sequence received from server:", sequence)
-
-            seq1, seq2 = sequence.split(";")
-            print("Seq1:", seq1)
-            print("Seq2:", seq2)
-
-            # Executa o algoritmo de Needleman-Wunsch
-            start_time = time.time()
-            alignment1_n, alignment2_n, score_n, num_gaps_n = needleman_wunsch(seq1, seq2)
-            end_time = time.time()
-            nw_time = end_time - start_time
-
-            # Executa o algoritmo de Smith-Waterman
-            start_time = time.time()
-            alignments1_s, alignments2_s, max_score_s, smith_gaps = smith_waterman(seq1, seq2)
-            end_time = time.time()
-            sw_time = end_time - start_time
-
-            # Enviar o melhor resultado para o servidor
-            response_message = f"Python;{seq1};Needleman-Wunsch;Score:{score_n};Gap:{num_gaps_n};Time:{nw_time:.6f};Smith-Waterman;Score:{max_score_s};Gap:{smith_gaps[0]};Time:{sw_time:.6f}"
-            client_socket.sendall(response_message.encode())
-            print(response_message)
-            print("Response sent to server")
-
-if __name__ == '__main__':
-    start_client()
+if __name__ == "__main__":
+    client_program()

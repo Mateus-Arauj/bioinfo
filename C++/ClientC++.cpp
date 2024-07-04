@@ -1,235 +1,188 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include <chrono>
 #include <algorithm>
-#include <asio.hpp>  // Necessário instalar a biblioteca ASIO para operações de rede
+#include <chrono>
+#include <cstring>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
-using asio::ip::tcp;
+#define BUFFER_SIZE 4096
 
-const int MATCH = 2;
-const int MISMATCH = -1;
-const int GAP = -1;
+using namespace std;
+using namespace std::chrono;
 
-int Max(int a, int b, int c) {
-    return std::max({a, b, c});
-}
+class NeedlemanWunsch {
+public:
+    NeedlemanWunsch(const string& seq1, const string& seq2, int match = 1, int mismatch = -1, int gap = -1)
+        : seq1(seq1), seq2(seq2), match(match), mismatch(mismatch), gap(gap) {}
 
-int Max(int a, int b, int c, int d) {
-    return std::max({a, b, c, d});
-}
+    tuple<string, string, int, int, double> align() {
+        auto start = high_resolution_clock::now();
+        int len_seq1 = seq1.length();
+        int len_seq2 = seq2.length();
 
-void SmithWaterman(const std::string& seq1, const std::string& seq2, std::string& alignedSeq1, std::string& alignedSeq2, int& maxScore, int& gapCount1, int& gapCount2) {
-    int len1 = seq1.length();
-    int len2 = seq2.length();
+        vector<vector<int>> score_matrix(len_seq1 + 1, vector<int>(len_seq2 + 1, 0));
 
-    // Matrizes de pontuação e direção
-    std::vector<std::vector<int>> score(len1 + 1, std::vector<int>(len2 + 1, 0));
-    std::vector<std::vector<char>> direction(len1 + 1, std::vector<char>(len2 + 1, '0'));
+        for (int i = 0; i <= len_seq1; ++i) {
+            score_matrix[i][0] = gap * i;
+        }
+        for (int j = 0; j <= len_seq2; ++j) {
+            score_matrix[0][j] = gap * j;
+        }
 
-    // Inicialização das matrizes
-    int maxI = 0, maxJ = 0;
-    maxScore = 0;
-
-    // Preenchimento da matriz de pontuação e matriz de direção
-    for (int i = 1; i <= len1; ++i) {
-        for (int j = 1; j <= len2; ++j) {
-            int scoreDiagonal = score[i - 1][j - 1] + (seq1[i - 1] == seq2[j - 1] ? MATCH : MISMATCH);
-            int scoreUp = score[i - 1][j] + GAP;
-            int scoreLeft = score[i][j - 1] + GAP;
-
-            score[i][j] = Max(0, scoreDiagonal, scoreUp, scoreLeft);
-
-            if (score[i][j] == scoreDiagonal) {
-                direction[i][j] = 'D';
-            } else if (score[i][j] == scoreUp) {
-                direction[i][j] = 'U';
-            } else if (score[i][j] == scoreLeft) {
-                direction[i][j] = 'L';
-            }
-
-            if (score[i][j] >= maxScore) {
-                maxI = i;
-                maxJ = j;
-                maxScore = score[i][j];
+        for (int i = 1; i <= len_seq1; ++i) {
+            for (int j = 1; j <= len_seq2; ++j) {
+                int match_score = score_matrix[i - 1][j - 1] + (seq1[i - 1] == seq2[j - 1] ? match : mismatch);
+                int delete_score = score_matrix[i - 1][j] + gap;
+                int insert_score = score_matrix[i][j - 1] + gap;
+                score_matrix[i][j] = max({match_score, delete_score, insert_score});
             }
         }
-    }
 
-    // Alinhamento a partir do ponto de maior pontuação
-    alignedSeq1 = "";
-    alignedSeq2 = "";
-    gapCount1 = 0;
-    gapCount2 = 0;
-
-    int iMax = maxI;
-    int jMax = maxJ;
-
-    while (score[iMax][jMax] > 0) {
-        if (direction[iMax][jMax] == 'D') {
-            alignedSeq1 = seq1[iMax - 1] + alignedSeq1;
-            alignedSeq2 = seq2[jMax - 1] + alignedSeq2;
-            iMax--;
-            jMax--;
-        } else if (direction[iMax][jMax] == 'U') {
-            alignedSeq1 = seq1[iMax - 1] + alignedSeq1;
-            alignedSeq2 = "-" + alignedSeq2;
-            gapCount2++;
-            iMax--;
-        } else if (direction[iMax][jMax] == 'L') {
-            alignedSeq1 = "-" + alignedSeq1;
-            alignedSeq2 = seq2[jMax - 1] + alignedSeq2;
-            gapCount1++;
-            jMax--;
-        }
-    }
-}
-
-void NeedlemanWunsch(const std::string& seq1, const std::string& seq2, std::string& alignedSeq1, std::string& alignedSeq2, int& finalScore, int& gapCount1, int& gapCount2) {
-    int len1 = seq1.length();
-    int len2 = seq2.length();
-
-    // Matrizes de pontuação e direção
-    std::vector<std::vector<int>> score(len1 + 1, std::vector<int>(len2 + 1, 0));
-    std::vector<std::vector<char>> direction(len1 + 1, std::vector<char>(len2 + 1, '0'));
-
-    // Inicialização das matrizes
-    for (int m = 0; m <= len1; ++m) {
-        score[m][0] = m * GAP;
-        direction[m][0] = 'U';
-    }
-
-    for (int n = 0; n <= len2; ++n) {
-        score[0][n] = n * GAP;
-        direction[0][n] = 'L';
-    }
-
-    // Preenchimento da matriz de pontuação e matriz de direção
-    for (int m = 1; m <= len1; ++m) {
-        for (int n = 1; n <= len2; ++n) {
-            int scoreDiagonal = score[m - 1][n - 1] + (seq1[m - 1] == seq2[n - 1] ? MATCH : MISMATCH);
-            int scoreUp = score[m - 1][n] + GAP;
-            int scoreLeft = score[m][n - 1] + GAP;
-
-            score[m][n] = Max(scoreDiagonal, scoreUp, scoreLeft);
-
-            if (score[m][n] == scoreDiagonal) {
-                direction[m][n] = 'D';
-            } else if (score[m][n] == scoreUp) {
-                direction[m][n] = 'U';
-            } else if (score[m][n] == scoreLeft) {
-                direction[m][n] = 'L';
+        string align1 = "", align2 = "";
+        int i = len_seq1, j = len_seq2;
+        while (i > 0 || j > 0) {
+            int current_score = score_matrix[i][j];
+            if (i > 0 && j > 0 && current_score == score_matrix[i - 1][j - 1] + (seq1[i - 1] == seq2[j - 1] ? match : mismatch)) {
+                align1 += seq1[i - 1];
+                align2 += seq2[j - 1];
+                --i;
+                --j;
+            } else if (i > 0 && current_score == score_matrix[i - 1][j] + gap) {
+                align1 += seq1[i - 1];
+                align2 += '-';
+                --i;
+            } else {
+                align1 += '-';
+                align2 += seq2[j - 1];
+                --j;
             }
         }
+
+        reverse(align1.begin(), align1.end());
+        reverse(align2.begin(), align2.end());
+        int gaps = count(align1.begin(), align1.end(), '-') + count(align2.begin(), align2.end(), '-');
+        int score = score_matrix[len_seq1][len_seq2];
+        auto end = high_resolution_clock::now();
+        double time_taken = duration_cast<duration<double>>(end - start).count();
+
+        return make_tuple(align1, align2, gaps, score, time_taken);
     }
 
-    // Pontuação final
-    finalScore = score[len1][len2];
+private:
+    string seq1, seq2;
+    int match, mismatch, gap;
+};
 
-    // Alinhamento a partir do ponto final
-    alignedSeq1 = "";
-    alignedSeq2 = "";
-    gapCount1 = 0;
-    gapCount2 = 0;
+class SmithWaterman {
+public:
+    SmithWaterman(const string& seq1, const string& seq2, int match = 1, int mismatch = -1, int gap = -1)
+        : seq1(seq1), seq2(seq2), match(match), mismatch(mismatch), gap(gap) {}
 
-    int mIndex = len1;
-    int nIndex = len2;
+    tuple<string, string, int, int, double> align() {
+        auto start = high_resolution_clock::now();
+        int len_seq1 = seq1.length();
+        int len_seq2 = seq2.length();
 
-    while (mIndex > 0 || nIndex > 0) {
-        if (direction[mIndex][nIndex] == 'D') {
-            alignedSeq1 = seq1[mIndex - 1] + alignedSeq1;
-            alignedSeq2 = seq2[nIndex - 1] + alignedSeq2;
-            mIndex--;
-            nIndex--;
-        } else if (direction[mIndex][nIndex] == 'U') {
-            alignedSeq1 = seq1[mIndex - 1] + alignedSeq1;
-            alignedSeq2 = "-" + alignedSeq2;
-            gapCount2++;
-            mIndex--;
-        } else if (direction[mIndex][nIndex] == 'L') {
-            alignedSeq1 = "-" + alignedSeq1;
-            alignedSeq2 = seq2[nIndex - 1] + alignedSeq2;
-            gapCount1++;
-            nIndex--;
-        }
-    }
-}
+        vector<vector<int>> score_matrix(len_seq1 + 1, vector<int>(len_seq2 + 1, 0));
 
-void start_client(const std::string& host = "127.0.0.1", int port = 65432) {
-    asio::io_context io_context;
-    tcp::socket socket(io_context);
-    tcp::resolver resolver(io_context);
-    asio::connect(socket, resolver.resolve(host, std::to_string(port)));
-
-    // Receber a sequência do servidor
-    std::array<char, 1024> buffer;
-    size_t len = socket.read_some(asio::buffer(buffer));
-    std::string sequence(buffer.data(), len);
-    std::cout << "Sequence received from server: " << sequence << std::endl;
-
-    std::string seq2 = "LKDDAWFCNWISVQGPGAGDEVRFPCYRWVEGNGVLSLPEGTGRTVGEDPQGLFQKHREEELEERRKLYR";
-
-    std::vector<std::string> macaco = {"CCCAGCAGTTGAGGATATTGGGCACAGCTGCATGTAAGGTGGTGTCACCTTGTTGAGCACATGGTAGTCCATGTTCATTCTCCAGGAGCCATCAGGCTTCTTTGCAGGCCACACAGGGCTGTTGTGGGGGCTGTGGGAGGCCTATTTGTACTTCATGTAATTCCTGAATTGTTTGGGTAGTTTCAGAGTGTCCCCCAGCAGGAGTATTGCCTCACATTCACTGTCTGCCTGGGCTGGGGCAAGTGTACAGCCACCCATGTGGCCCATCCTCTTTTTGTTCCTTGATTACTTTCTGGACTTGGTCCTTGCTTTTATCCAGCTCACTGAGGTCTGCCAAAGATTCCAGACACATTATAACCCTTCTTAAATTGGAAATGACCCAGACATTCCATGAGTACCTGAAATAATTTTAAGATTTTAAGCTATATAATCAGACAAGAGAAAGAAATAAAGGGCGACCAAATCAGAAAAGGGGAAGTCAAACTGTCATTATGATTATATACCTAAAAAATCCTATAGACTCATCCAAAAAGCTCCTAGAACTGCAAA",
-                                    "TGTGACTTGTACCCTAGAGTTGTCCTGCCTTGGAGTAAAGAGGCTGGCCTTTTGTACCCTTGTATTAGTCAATTATTGGCTACATGACACCAATGTATCCAACTGGTGCAGAGGGGATGGTGCACCCTCTCCAGGATTTCCAGGTAAGGCAACTCCTGTCAGTGGAGGGCAGTGTTAGCTGTGGGGTGCTGCTGTGTTAGCAGCAAACATTCACCACGGCAGGGGGCTGGACTTACCAATGTACATTACCAGTTTAATATACATTTAATGTACAACACCAGTTTAATGCACATTTAATGTACCATCAAGGAGGTTGGATGCATTGACTTTTCAAAGGGGATCTGAGTGGGGCACCAATGGCATCTACTACGTGAGAGACAGAGCTTTATCCTACTGGGAAAGTGGGGGAGGCAATCTAGAATTCACACTTCAATGTGATCTCAATTTGAGGGATGAGGGAGCTGGGCTATTTACCCACCAACTCCTGGCAGCCCTTACTGAAGGAGACTCCTGGGGAGGTTAATTCTCAGTGTGGCCTGTGTGTAGCCACAGAGAGCTCCAGCAGCCGACAGTCATGT",
-                                    "GCTGGGGCCCGGTCTTGGACTCACATGAATGAAGTAGTTGGCATAGGAGTCCTCCTTGGTAACAAAGTGGTACAGGTCAGCCAAGTACTCGTCCTTGGGGACAGAGAGGGGAGAGCTTACGTTGGGTGAGGCTGGGGGGTCTAGAGGGGAAGAGGAGGCTTGGAAGGGCTGGTGACCTCCCCCAGGCCACACAACTGCAGGTGGGAGGTCCCAGCCAGGCTCCTCTCTCTGCCAAGGTTGGTGCTTGGGGCCAGCCCCTGGGAACTCCCTTAAACTTTTCTGGCTTCTTGTCCCCATCTCTGTGTCTCCACAGACTTAGCACAGTGCCTTGTTTTTTGTTTTGTTTCGTTTGAGACGGAGTCTCGCACTGTTGCCCGGGCTGGAGTGCAGTGGTGCAATCTCGGCTCACTGCAACCTCTGCCTCCTGGGTTCAAGCGATTCTCCTGCCTCAGCCTCCTGAGTAGCTGGGATTACAGGCGCGTGCCACTACGCCCAGCTAAGTTTTTGTATTTTTAGTAGAGACAGGGTTTCACCATGTTGGC",
-                                    "CTCTGAAATACAAGACCTTTAGGGATCACTTAGCCCAACAGCCTCAATGGATAGAGATAACTGAGGCCCAGAGCAGGCATTTGTTCAAGTTCAGAGAAGAAGAACGTTAACGCCTCTGTGTGACCTGGCATCAGGCGGGGCTAGACTATCACCTCCAAGTCAGGCTGCCTGAGGTCATACTGGCAGGGATGGCCCAACCACTGGATCAGGAACCCACCAGAGCATGCCTAAGTCTTGTCACTAAATCTCTATGCCCAGCCATTGAGACAAAGAATCTTACAGATCCCATACAAGACTCTACTGTGACCCCACCAGAGCCTTGCATTGTTGGGCACACCTGCCCCAACACTCCCAGCCAGCATCATGACTTCTAGGATGGATTCAGATGGCCACACCCAGATATCACTCCACTCCCCTTTTAGCTTCCATGAGAGATTTAGCTTCTGTGAAAGCAGGGATGTCAGGACCCAAGGGGCAGGTCTGTGGACAAACTGACTCACCTCATACTGTAGCTTCTGTTTCCCTGCAGGCATGCCTGTGGCTTCATGAATCTTCACCTTAATGACAGAGACCTGTGGGATCAAGCAGC",
-                                    "ATACAGGGTCTTGCTCTGTTGACCAGACCGTGACCTCCTGGGTTCAAGCGAGGACTCAGCCTCCTGAGTAGCCGGGACTACAGATTGGACGACTGATTATTGGACAGAATGGCATCTTGTCTACACCTGCGGTCTCCTGCATTATCAGGAAGATCAAGGCAGCTGGTGGAATCATTCTAACAGCCAGCCACTGCCCTGGAGGACCAGGGGGAGAGTTTGGAGTGAAGTTTAATGTTGCCAATGGAGGGCAGACTTCTTGGAGGAAGTGAAATTTGAACTGCGATGTGAAGAATGAGCAGGAGTTAGTGAGGTGAAGATGAGAGAAGGAGTGTTGCAAACACAGGTCAGTCTGTGCAAAGGCCCTGA"};
-
-    std::vector<std::string> gorila = {"TACCAGTTTAAGGGCCTGTGCTACTTCACCAACGGGACGGAGCGCGTGCGGGCTGTGACCAGACACATCTATAACCGAGAGGAGTACGTGCGCTTCGACAGCGACGTGGGGGTGTACCGGGCAGTGACGCCGCAGGGGCGGCCTGCCGCCGACTACTGGAACAGCCAGAAGGAAGCCTGGAGGAGACCCGGGCGTCGGTGGACAGGGTGTGCAGACACAACTACGAGGTGTCGTACCGCGGGATC",
-                                     "TACCAGTTTAAGGGCATGTGCTACTTCACCAACGGGACGGAGCGCGTGCGTGTTGTGACGAGATACATCTATAACCGAGAGGAGTACGCGCGCTTCGACAGCGACGTGGGGGTGTATCAGGCGGTGACGCCGCTGGGGCCGCCTGACGCCGACTACTGGAACAGCCAGAAGGAAGCCTGGAGGAGACCCGGGCGTCGGTGGACAGGGTGTGCAGACACAACTACCAGTTGGAGCTCCTCACGACC",
-                                     "CCAAGTATTAGCTAACCCATCAATAATTATCATGTATGTCGTGCATTACTGCCAGACACCATGAATAATGCACAGTACTACAAATGTCCAACCACCTGTAACACATACAACCCCCCCCCTCACTGCTCCACCCAACGGAATACCAACCAATCCATCCCTCACAAAAAGTACATAAACATAAAGTCATTTATCGTACATAGCACATTCCAGTTAAATCATCCTCGCCCCCACGGATGCCCCCCCTCAGATA",
-                                     "ATGGCGGTTTTGTGGAATAGAAAAGGGGGCAAGGTGGGGAAAAGATTGAGAAATCGGAAGGTTGCTGTGTCTGTGTAGAAAGAAGTAGACATGGGAGACTTTTCATTTTGTTCTGTACTAAGAAAAATTCTTCTGCCTTGGGATCCTGTTGATCTATGACCTTACCCCCAACCCTGTGCTCTCTGAAACATGTGTTGTGTCCACTCAGGGTTAAATGGATTAAGGGCGGTGCAAGATGTGCTTTGTTAAACAGATGCTTGAAGGCAGCATGCTCGTTAAGAGTCATCACCACTCCCTAATCTCAAGTACCCAGGGACACAAACACTGCGGAAGGCTGCAGGGTCCTCTGCCTAGGAAAACCAGAGACCTTTGTTCACTTGTTTATCTGCTGACCTTCCCTCCACTACTGTCCTATGACCCTGCCACATCCCCCTCTGCG",
-                                     "ATGGCGGTTTTGTGGAATAGAAAAGGGGGCAAGGTGGGGAAAAGATTGAGAAATCGGAAGGTTGCTGTGTCTGTGTAGAAAGAAGTAGATATGGGAGACTTTTCATTTTGTTCTGTACTAAGAAAAATTCTTCTGCCTTGGGATCCTGTTGATCTATGACCTTACCCCCAACCCTGTGCTCTCTGAAACATGTGCTGTGTCCACTCAGGGTTAAATGGATTAAGGGCGGTGCAAGATGTGCTTTGTTAAACAGATGCTTGAAGGCAGCATGCTCCTTAAGAGTCATCACCACTCCCTAATCTCAAGTACCCATGGACACAAACACTCTGCCTAGGAAAACCAGAGACCTTTGTTCACTTGTTTGTCTGCTGACCTTCCCTCCACTACTGTCCTATGACCCTGCCAAATCCCCCTCTGCG"};
-
-    std::string best_needleman, best_smith;
-    int best_needleman_score = -1, best_smith_score = -1;
-
-    // Executa o algoritmo de Needleman-Wunsch e Smith-Waterman para sequências de macaco
-    for (const auto& seq : macaco) {
-        std::string nwAlignedSeq1, nwAlignedSeq2, swAlignedSeq1, swAlignedSeq2;
-        int nwFinalScore, swMaxScore, nwGapCount1, nwGapCount2, swGapCount1, swGapCount2;
-
-        NeedlemanWunsch(seq, seq2, nwAlignedSeq1, nwAlignedSeq2, nwFinalScore, nwGapCount1, nwGapCount2);
-        SmithWaterman(seq, seq2, swAlignedSeq1, swAlignedSeq2, swMaxScore, swGapCount1, swGapCount2);
-
-        if (nwFinalScore > best_needleman_score) {
-            best_needleman = "Needleman;AlignmentScore:" + std::to_string(nwFinalScore) + ";Gap1:" + std::to_string(nwGapCount1) + ";Gap2:" + std::to_string(nwGapCount2);
-            best_needleman_score = nwFinalScore;
+        int max_score = 0;
+        pair<int, int> max_pos = {0, 0};
+        for (int i = 1; i <= len_seq1; ++i) {
+            for (int j = 1; j <= len_seq2; ++j) {
+                int match_score = score_matrix[i - 1][j - 1] + (seq1[i - 1] == seq2[j - 1] ? match : mismatch);
+                int delete_score = score_matrix[i - 1][j] + gap;
+                int insert_score = score_matrix[i][j - 1] + gap;
+                score_matrix[i][j] = max({0, match_score, delete_score, insert_score});
+                if (score_matrix[i][j] >= max_score) {
+                    max_score = score_matrix[i][j];
+                    max_pos = {i, j};
+                }
+            }
         }
 
-        if (swMaxScore > best_smith_score) {
-            best_smith = "Smith;AlignmentScore:" + std::to_string(swMaxScore) + ";Gap1:" + std::to_string(swGapCount1) + ";Gap2:" + std::to_string(swGapCount2);
-            best_smith_score = swMaxScore;
+        string align1 = "", align2 = "";
+        int i = max_pos.first, j = max_pos.second;
+        while (score_matrix[i][j] != 0) {
+            int current_score = score_matrix[i][j];
+            if (i > 0 && j > 0 && current_score == score_matrix[i - 1][j - 1] + (seq1[i - 1] == seq2[j - 1] ? match : mismatch)) {
+                align1 += seq1[i - 1];
+                align2 += seq2[j - 1];
+                --i;
+                --j;
+            } else if (i > 0 && current_score == score_matrix[i - 1][j] + gap) {
+                align1 += seq1[i - 1];
+                align2 += '-';
+                --i;
+            } else {
+                align1 += '-';
+                align2 += seq2[j - 1];
+                --j;
+            }
         }
+
+        reverse(align1.begin(), align1.end());
+        reverse(align2.begin(), align2.end());
+        int gaps = count(align1.begin(), align1.end(), '-') + count(align2.begin(), align2.end(), '-');
+        int score = max_score;
+        auto end = high_resolution_clock::now();
+        double time_taken = duration_cast<duration<double>>(end - start).count();
+
+        return make_tuple(align1, align2, gaps, score, time_taken);
     }
 
-    // Executa o algoritmo de Needleman-Wunsch e Smith-Waterman para sequências de gorila
-    for (const auto& seq : gorila) {
-        std::string nwAlignedSeq1, nwAlignedSeq2, swAlignedSeq1, swAlignedSeq2;
-        int nwFinalScore, swMaxScore, nwGapCount1, nwGapCount2, swGapCount1, swGapCount2;
+private:
+    string seq1, seq2;
+    int match, mismatch, gap;
+};
 
-        NeedlemanWunsch(seq, seq2, nwAlignedSeq1, nwAlignedSeq2, nwFinalScore, nwGapCount1, nwGapCount2);
-        SmithWaterman(seq, seq2, swAlignedSeq1, swAlignedSeq2, swMaxScore, swGapCount1, swGapCount2);
-
-        if (nwFinalScore > best_needleman_score) {
-            best_needleman = "Needleman;AlignmentScore:" + std::to_string(nwFinalScore) + ";Gap:" + std::to_string(nwGapCount1) + ";Gap2:" + std::to_string(nwGapCount2);
-            best_needleman_score = nwFinalScore;
-        }
-
-        if (swMaxScore > best_smith_score) {
-            best_smith = "Smith;AlignmentScore:" + std::to_string(swMaxScore) + ";Gap:" + std::to_string(swGapCount1) + ";Gap2:" + std::to_string(swGapCount2);
-            best_smith_score = swMaxScore;
-        }
+void client_program() {
+    int client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_socket < 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
     }
 
-    // Enviar o melhor resultado para o servidor
-    std::string response_message = "C++;" + best_needleman + ";" + best_smith;
-    socket.send(asio::buffer(response_message));
-    std::cout << response_message << std::endl;
-    std::cout << "Response sent to server" << std::endl;
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(9999);
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection failed");
+        close(client_socket);
+        exit(EXIT_FAILURE);
+    }
+
+    char buffer[BUFFER_SIZE] = {0};
+    int bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
+    if (bytes_received < 0) {
+        perror("Receive failed");
+        close(client_socket);
+        exit(EXIT_FAILURE);
+    }
+
+    buffer[bytes_received] = '\0';
+    string data(buffer);
+    string seq1 = data.substr(data.find("seq1:") + 5, data.find(";seq2:") - data.find("seq1:") - 5);
+    string seq2 = data.substr(data.find("seq2:") + 5);
+
+    NeedlemanWunsch nw(seq1, seq2);
+    auto [nw_align1, nw_align2, nw_gaps, nw_score, nw_time] = nw.align();
+
+    SmithWaterman sw(seq1, seq2);
+    auto [sw_align1, sw_align2, sw_gaps, sw_score, sw_time] = sw.align();
+
+    snprintf(buffer, BUFFER_SIZE, "C++;Needleman;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f;Smith;Alignment1:%s;Alignment2:%s;AlignmentScore:%d;Gap:%d;ExecutionTime:%.4f",
+             nw_align1.c_str(), nw_align2.c_str(), nw_score, nw_gaps, nw_time, sw_align1.c_str(), sw_align2.c_str(), sw_score, sw_gaps, sw_time);
+
+    send(client_socket, buffer, strlen(buffer), 0);
+    close(client_socket);
 }
 
 int main() {
-    start_client();
+    client_program();
     return 0;
 }
